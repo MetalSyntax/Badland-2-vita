@@ -51,21 +51,31 @@ void native_activity_bootstrap(so_module *mod) {
     if (g_activity.callbacks->onStart) {
         l_success("Calling onStart...");
         g_activity.callbacks->onStart(&g_activity);
+        l_success("onStart returned.");
     }
 
     if (g_activity.callbacks->onResume) {
         l_success("Calling onResume...");
         g_activity.callbacks->onResume(&g_activity);
+        l_success("onResume returned.");
     }
 
-    if (g_activity.callbacks->onWindowFocusChanged) {
-        l_success("Calling onWindowFocusChanged...");
-        g_activity.callbacks->onWindowFocusChanged(&g_activity, 1);
+    if (g_activity.callbacks->onInputQueueCreated) {
+        l_success("Calling onInputQueueCreated...");
+        g_activity.callbacks->onInputQueueCreated(&g_activity, input_queue_create());
+        l_success("onInputQueueCreated returned.");
     }
 
     if (g_activity.callbacks->onNativeWindowCreated) {
         l_success("Calling onNativeWindowCreated...");
         g_activity.callbacks->onNativeWindowCreated(&g_activity, &g_fake_native_window);
+        l_success("onNativeWindowCreated returned.");
+    }
+
+    if (g_activity.callbacks->onWindowFocusChanged) {
+        l_success("Calling onWindowFocusChanged...");
+        g_activity.callbacks->onWindowFocusChanged(&g_activity, 1);
+        l_success("onWindowFocusChanged returned.");
     }
 
     l_success("native_activity_bootstrap done.");

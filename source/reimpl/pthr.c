@@ -124,9 +124,7 @@ PTHR_INLINE int _mutex_t_static_init(pthread_mutex_t_bionic * mutex, const pthre
         else if (* (int *) mutex == BIONIC_PTHREAD_ERRORCHECK_MUTEX_INITIALIZER) kind = PTHREAD_MUTEX_ERRORCHECK;
     }
 
-    pthread_mutex_t mut;
-    mutex->real_ptr = malloc(sizeof(pthread_mutex_t));
-    sceClibMemcpy(mutex->real_ptr, &mut, sizeof(pthread_mutex_t));
+    mutex->real_ptr = calloc(1, sizeof(pthread_mutex_t));
 
     pthread_mutexattr_t mutattr;
     pthread_mutexattr_init(&mutattr);
@@ -152,9 +150,7 @@ PTHR_INLINE int _cond_t_static_init(pthread_cond_t_bionic * cond, const pthread_
         return ret;
     }
 
-    pthread_cond_t c;
-    cond->real_ptr = malloc(sizeof(pthread_cond_t));
-    sceClibMemcpy(cond->real_ptr, &c, sizeof(pthread_cond_t));
+    cond->real_ptr = calloc(1, sizeof(pthread_cond_t));
 
     ret = pthread_cond_init(cond->real_ptr, attr);
 

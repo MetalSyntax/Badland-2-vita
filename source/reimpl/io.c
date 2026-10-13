@@ -109,7 +109,13 @@ int fclose_soloader(FILE * f) {
     return ret;
 }
 
+#include "reimpl/looper.h"
+
 int close_soloader(int fd) {
+    if (fake_pipe_close(fd)) {
+        l_debug("close(%i): closed fake pipe", fd);
+        return 0;
+    }
     int ret = close(fd);
     l_debug("close(%i): %i", fd, ret);
     return ret;

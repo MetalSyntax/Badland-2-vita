@@ -463,8 +463,8 @@ so_default_dynlib default_dynlib[] = {
         { "lseek", (uintptr_t)&lseek },
         { "lstat", (uintptr_t)&lstat },
         { "mkdir", (uintptr_t)&mkdir },
-        { "pipe", (uintptr_t)&pipe },
-        { "read", (uintptr_t)&read },
+        { "pipe", (uintptr_t)&pipe_soloader },
+        { "read", (uintptr_t)&read_soloader },
         { "realpath", (uintptr_t)&realpath },
         { "remove", (uintptr_t)&remove },
         { "rename", (uintptr_t)&rename },
@@ -472,7 +472,7 @@ so_default_dynlib default_dynlib[] = {
         { "rmdir", (uintptr_t)&rmdir },
         { "truncate", (uintptr_t)&truncate },
         { "unlink", (uintptr_t)&unlink },
-        { "write", (uintptr_t)&write },
+        { "write", (uintptr_t)&write_soloader },
 
 
         // *printf, *scanf
