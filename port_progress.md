@@ -129,12 +129,22 @@
 - `clean-junk` ejecutado (eliminados archivos `._*` de macOS).
 - `badland2.vpk` y `eboot.bin` compilan sin errores.
 
-## Fase 15: Testing y release (Bloqueado por hardware)
-- Bloqueado por hardware. Consola (`192.168.3.15`) apagada / inalcanzable.
-- Git commit inicial: `8fbddb1` ("feat(badland2): complete loader bootstrap, native activity glue, canonical logging and language mappings").
+## Fase 15: Testing y release (Primer boot analizado en hardware)
+- **2026-10-13 — Análisis de `logs/badland2_002.log`:**
+  - El boot llegó con éxito hasta la llamada a `onStart`:
+    `Calling onStart...` (última línea escrita).
+  - **Diagnóstico por desensamblado cruzado:**
+    1. `onStart` en el glue de `libbadland2.so` escribe un comando `APP_CMD_START` en su `pipe` de comandos y llama a `pthread_cond_wait()` hasta que el hilo de `android_main` lea el comando y lo procese.
+    2. El loader original tenía `pipe()`, `read()`, `write()` mapeados directamente a newlib (donde los pipes no se comportan como IPC entre hilos) y `ALooper_pollAll()` no despachaba fds con callbacks registrados (`android_app_read_cmd` no se ejecutaba), causando un deadlock / cuelgue total en la pantalla de LiveArea.
+    3. `pthread_mutex_init_soloader` y `pthread_cond_init_soloader` copiaban memoria no inicializada del stack sobre el puntero antes de llamar a las APIs de inicialización.
+  - **Solución implementada:**
+    - Fake pipe bidireccional en memoria con ring buffer y sincronización mutex/cond (`pipe_soloader`, `read_soloader`, `write_soloader`, `fake_pipe_close`).
+    - Despachador de callbacks y eventos en `ALooper_pollAll` (`source/reimpl/looper.c`).
+    - Reemplazo de copias de memoria basura por `calloc` limpio en `source/reimpl/pthr.c`.
+    - Secuencia completa del ciclo de vida NDK en `native_activity_bootstrap` (`onStart` -> `onResume` -> `onInputQueueCreated` -> `onNativeWindowCreated` -> `onWindowFocusChanged`).
 
 ## Cómo seguir (una cosa a la vez)
-1. Encender la PS Vita y conectar a red Wi-Fi para que responda en `192.168.3.15` (o actualizar IP en `.psvita-toolkit.json`).
-2. Instalar `badland2.vpk` y transferir `libbadland2.so` (como `main.so`), `assets/` y `.so` dependientes a `ux0:data/badland2/`.
-3. Iniciar el juego y examinar el log generado en `ux0:data/badland2/logs/badland2_001.log`.
-4. Si crashea, aplicar skill `so-crash-triage` (suspectos principales: inicialización FMOD o `JNI_textAsBitmap`).
+1. Instalar el nuevo `badland2.vpk` (o enviar el nuevo `eboot.bin` a `ux0:app/PSVBL0002/eboot.bin`).
+2. Iniciar el juego en la PS Vita.
+3. El hilo de `android_main` ahora procesará los comandos del ciclo de vida y avanzará más allá del LiveArea hacia la creación de la ventana e inicialización gráfica.
+4. Revisar el nuevo log `ux0:data/badland2/logs/badland2_003.log`.
