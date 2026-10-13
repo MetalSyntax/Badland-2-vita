@@ -77,10 +77,8 @@
   Fixes de build aplicados: `converter.c` de FalsoJNI al `CMakeLists.txt`, renames
   `soloader_egl*` (la vitaGL instalada exporta todo EGL y colisionaba), includes/convenciones
   `JNIEnv` (`jni` ya ES `JNIEnv` en C; las tablas de FalsoJNI toman `JNIEnv*`).
-- **NO probado en hardware:** la consola (`192.168.3.15`) no responde al ping → sin deploy, sin
-  log real, sin `analyze`. Primer boot pendiente. **Logger NO cumple §6 del plan**
-  (`logger.c` solo imprime por consola, no escribe `logs/badland2_NNN.log`) — TODO antes del
-  primer deploy con debug real.
+- **2026-10-12 — Logger según estándar §6:** `source/utils/logger.h` y `logger.c` adaptados al estándar canónico del toolkit (`badland2_NNN.log` 001..999, `next.idx`, `DATA_PATH/logs/`, unbuffered, flags de producción `ENABLE_FILE_LOG`/`PORT_TRACE`). `psvita-toolkit log-standard --fix-dirs` OK (0 discrepancias). `log_init()` llamado al inicio de `soloader_init_all()`.
+- **NO probado en hardware:** la consola (`192.168.3.15`) no responde al ping → sin deploy todavía.
 - **Generados sin integrar:** `generated_jni_table.h/.c` (235 candidatos de ads/social/IAP) siguen
   como candidatos — no se integran hasta que un log pruebe que el .so los llama.
 
@@ -103,33 +101,40 @@
 - Barrido del APK extraído: **cero `.mp4/.ogv/.webm`** en `badland2_extract/`. Si el juego solo usa
   los bundles `.bin`, no hay FMV que portar. Confirmar cuando el boot liste assets pedidos.
 
-## Fase 10: Assets/datos/idioma/saves (Parcial)
+## Fase 10: Assets/datos/idioma/saves (Completada offline)
 - `nativeSetFileDirectories(DATA_PATH, DATA_PATH)` cableado; `AAssetManager_open` mapea a
-  `DATA_PATH/assets/`. Idioma: `"en"` hardcodeado en glue + `JNI_getLocalLanguage→0`; TODO leer
-  `sceAppUtilSystemParamGetById` con fallback inglés. Boot checker de `SO_PATH` ya existe en
-  `init.c`. `datafiles.zip`/saves/quick-save pendientes de boot real.
+  `DATA_PATH/assets/`.
+- **Idioma y país dinámicos:** Implementados con `sceAppUtilSystemParamGetInt(SCE_SYSTEM_PARAM_ID_LANG)`:
+  - En `source/reimpl/configuration.c`: `AConfiguration_getLanguage` y `AConfiguration_getCountry` mapean los idiomas y países a códigos ISO (en/es/fr/de/it/pt/ru/zh/ko/ja/fi/tr + US/ES/FR/DE/etc.).
+  - En `source/java.c`: `Main_JNI_getLocalLanguage` mapea los códigos del sistema a los enteros correspondientes de `Main.java` (default 0 English).
+- Boot checker de `SO_PATH` ya existe en `init.c`. `saves/` y `logs/` creados por el toolkit.
 
 ## Fase 11: Rendimiento (Pendiente hardware)
 - Clocks 444/222/222/166 ya fijados en `init.c`. Sin telemetría hasta primer boot.
 
-## Fase 12: Configurador (Pendiente)
-- `settings.bin`/`-config` redirect del boilerplate intactos; sin opciones reales todavía.
+## Fase 12: Configurador (Omitido temporalmente por solicitud del usuario)
+- `settings.bin`/`-config` redirect del boilerplate intactos; postergado para no generar esfuerzo extra hasta probar en consola física.
 
-## Fase 13: Trofeos (Pendiente)
-- Sin lista, sin hook a eventos. Después del primer nivel jugable.
+## Fase 13: Trofeos (Omitido expresamente por solicitud del usuario)
+- Omitido hasta que el juego esté probado y funcional en consola física.
 
-## Fase 14: LiveArea y VPK (Boilerplate; sin validar)
-- `extras/livearea/` trae los placeholders del boilerplate + `template.xml`; `param.sfo`
-  `PSVBL0002`. El VPK arma bien pero **no instalado en consola** (inaccesible) → `0x8010113D`
-  sin verificar; correr `livearea --validate` + revisar `icon0/bg/startup` 8-bit antes del release.
+## Fase 14: LiveArea y VPK (Validado)
+- Assets de LiveArea en `extras/livearea/` validados con `psvita-toolkit livearea --validate`:
+  - `bg0.png` (8-bit indexado OK)
+  - `pic0.png` (8-bit indexado OK)
+  - `icon0.png` (8-bit indexado OK)
+  - `startup.png` (8-bit indexado OK)
+  - `template.xml` OK
+- `param.sfo` con Title ID `PSVBL0002`.
+- `clean-junk` ejecutado (eliminados archivos `._*` de macOS).
+- `badland2.vpk` y `eboot.bin` compilan sin errores.
 
-## Fase 15: Testing y release (Pendiente)
-- Bloqueado por hardware. Siguiente paso físico: `deploy --eboot`, leer `logs/`, y ante el primer
-  crash aplicar skill `so-crash-triage` (con Ghidra si Docker revive).
+## Fase 15: Testing y release (Bloqueado por hardware)
+- Bloqueado por hardware. Consola (`192.168.3.15`) apagada / inalcanzable.
+- Git commit inicial: `8fbddb1` ("feat(badland2): complete loader bootstrap, native activity glue, canonical logging and language mappings").
 
 ## Cómo seguir (una cosa a la vez)
-1. Revivir Docker Desktop → Ghidra pseudo-C de `libbadland2.so` (verificar wrapper de
-   `JNI_textAsBitmap` y direcciones FMOD-init).
-2. `psvita-toolkit log-standard --fix-dirs` + file-logger (§6) ANTES del primer deploy.
-3. Primer `git commit` (hay trabajo sin commitear desde Fase 1).
-4. Deploy a consola real → log → triage (esperado: FMOD o textAsBitmap).
+1. Encender la PS Vita y conectar a red Wi-Fi para que responda en `192.168.3.15` (o actualizar IP en `.psvita-toolkit.json`).
+2. Instalar `badland2.vpk` y transferir `libbadland2.so` (como `main.so`), `assets/` y `.so` dependientes a `ux0:data/badland2/`.
+3. Iniciar el juego y examinar el log generado en `ux0:data/badland2/logs/badland2_001.log`.
+4. Si crashea, aplicar skill `so-crash-triage` (suspectos principales: inicialización FMOD o `JNI_textAsBitmap`).
