@@ -129,22 +129,27 @@
 - `clean-junk` ejecutado (eliminados archivos `._*` de macOS).
 - `badland2.vpk` y `eboot.bin` compilan sin errores.
 
-## Fase 15: Testing y release (Primer boot analizado en hardware)
+## Fase 15: Testing y release (Boots analizados en hardware)
 - **2026-10-13 — Análisis de `logs/badland2_002.log`:**
-  - El boot llegó con éxito hasta la llamada a `onStart`:
-    `Calling onStart...` (última línea escrita).
-  - **Diagnóstico por desensamblado cruzado:**
-    1. `onStart` en el glue de `libbadland2.so` escribe un comando `APP_CMD_START` en su `pipe` de comandos y llama a `pthread_cond_wait()` hasta que el hilo de `android_main` lea el comando y lo procese.
-    2. El loader original tenía `pipe()`, `read()`, `write()` mapeados directamente a newlib (donde los pipes no se comportan como IPC entre hilos) y `ALooper_pollAll()` no despachaba fds con callbacks registrados (`android_app_read_cmd` no se ejecutaba), causando un deadlock / cuelgue total en la pantalla de LiveArea.
-    3. `pthread_mutex_init_soloader` y `pthread_cond_init_soloader` copiaban memoria no inicializada del stack sobre el puntero antes de llamar a las APIs de inicialización.
+  - El boot llegó con éxito hasta la llamada a `onStart`: `Calling onStart...` (última línea escrita).
+  - Resuelto: Deadlock de pipe y despacho de ALooper implementado.
+- **2026-10-13 — Análisis de `logs/badland2_003.log`:**
+  - **Avance:** El motor superó el LiveArea, completó el ciclo NDK (`onStart`, `onResume`, `onInputQueueCreated`, `onNativeWindowCreated`), levantó EGL y GLES2 VitaGL, tradujo y compiló shaders GLSL y cargó los assets principales (`audio.bin`, `tex_SD`).
+  - **Crash identificado:**
+    `Fatal error: Unknown symbol "ZN4FMOD6Studio6System6createEPPS1_j" (0x984b1c58).`
+    Disparado al ejecutar `Java_com_frogmind_badland2_Main_nativeInitFmod` en `b::AudioEngine::init`.
+  - **Errores de shaders identificados:**
+    `file_save: Could not open the specified target path "ux0:data/badland2/gxp/..."`
+    El compilador de shaders intentaba guardar la caché `.gxp` en directorios que no existían en disco.
   - **Solución implementada:**
-    - Fake pipe bidireccional en memoria con ring buffer y sincronización mutex/cond (`pipe_soloader`, `read_soloader`, `write_soloader`, `fake_pipe_close`).
-    - Despachador de callbacks y eventos en `ALooper_pollAll` (`source/reimpl/looper.c`).
-    - Reemplazo de copias de memoria basura por `calloc` limpio en `source/reimpl/pthr.c`.
-    - Secuencia completa del ciclo de vida NDK en `native_activity_bootstrap` (`onStart` -> `onResume` -> `onInputQueueCreated` -> `onNativeWindowCreated` -> `onWindowFocusChanged`).
+    1. **Multi-módulo FMOD real:** Carga encadenada de `ux0:data/badland2/libfmod.so` (0x98000000) y `ux0:data/badland2/libfmodstudio.so` (0x98200000) previa a `libbadland2.so` (0x98400000). Los 47 símbolos C++ de FMOD se resuelven nativamente vía `DT_NEEDED` sin stubs destructivos.
+    2. **Soporte OpenSL ES:** Mapeo de `slCreateEngine` y `SL_IID_*` en `dlsym_soloader`, enlace con `libOpenSLES.a` del SDK de Vita, y stubs de bajo nivel para `sf_*` de SndFile.
+    3. **Símbolos faltantes Bionic:** Añadidos `__assert2` y `setpriority` a `dynlib.c`.
+    4. **Caché de shaders y VitaGL:** Creación automática de directorios `ux0:data/badland2/gxp`, `cg` y `glsl` en `soloader_init_all`. Ajuste de memoria de VitaGL a 16 MB (`vglInitExtended`) según `README VITAGL.md`.
 
 ## Cómo seguir (una cosa a la vez)
-1. Instalar el nuevo `badland2.vpk` (o enviar el nuevo `eboot.bin` a `ux0:app/PSVBL0002/eboot.bin`).
-2. Iniciar el juego en la PS Vita.
-3. El hilo de `android_main` ahora procesará los comandos del ciclo de vida y avanzará más allá del LiveArea hacia la creación de la ventana e inicialización gráfica.
-4. Revisar el nuevo log `ux0:data/badland2/logs/badland2_003.log`.
+1. Copiar `libfmod.so` y `libfmodstudio.so` (desde `badland2_extract/lib/armeabi-v7a/`) a `ux0:data/badland2/`.
+2. Instalar el nuevo `badland2.vpk` (o enviar el nuevo `eboot.bin` a `ux0:app/PSVBL0002/eboot.bin`).
+3. Iniciar el juego en la consola física.
+4. El cargador inicializará FMOD Studio real, guardará la caché de shaders en disco y continuará con la ejecución del juego.
+5. Revisar el nuevo log `ux0:data/badland2/logs/badland2_004.log`.

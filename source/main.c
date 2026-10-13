@@ -16,6 +16,8 @@ int sceLibcHeapSize = 4 * 1024 * 1024;
 #endif
 
 so_module so_mod;
+so_module so_mod_fmod;
+so_module so_mod_fmodstudio;
 
 int main() {
     soloader_init_all();

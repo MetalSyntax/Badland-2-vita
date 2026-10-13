@@ -120,6 +120,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       SceShaccCgExt
                       taihen_stub
                       SceShaccCg_stub
+                      OpenSLES
                       z
                       m
                       ScePgf_stub

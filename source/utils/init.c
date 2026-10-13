@@ -21,15 +21,19 @@
 #include <psp2/apputil.h>
 #include <psp2/kernel/clib.h>
 #include <psp2/power.h>
+#include <psp2/io/stat.h>
 
 #include <falso_jni/FalsoJNI.h>
 #include <so_util/so_util.h>
 #include <fios/fios.h>
 
-// Base address for the Android .so to be loaded at
-#define LOAD_ADDRESS 0x98000000
+// Virtual load addresses for multi-module layout (aligned to 2MB boundaries)
+#define LOAD_ADDRESS_FMOD       0x98000000
+#define LOAD_ADDRESS_FMODSTUDIO 0x98200000
+#define LOAD_ADDRESS_GAME       0x98400000
 
-extern so_module so_mod;
+#define FMOD_SO_PATH       DATA_PATH "libfmod.so"
+#define FMODSTUDIO_SO_PATH DATA_PATH "libfmodstudio.so"
 
 void soloader_init_all() {
     log_init();
@@ -57,19 +61,58 @@ void soloader_init_all() {
         l_success("FIOS initialized.");
 #endif
 
+    // Ensure shader cache directories exist so shader dumping and caching succeeds
+    sceIoMkdir(DATA_PATH "gxp", 0777);
+    sceIoMkdir(DATA_PATH "cg", 0777);
+    sceIoMkdir(DATA_PATH "glsl", 0777);
+
     if (!module_loaded("kubridge")) {
         l_fatal("kubridge is not loaded.");
         fatal_error("Error: kubridge.skprx is not installed.");
     }
     l_success("kubridge check passed.");
 
+    // 1. Load libfmod.so if present
+    if (file_exists(FMOD_SO_PATH)) {
+        l_info("Loading %s at 0x%08x...", FMOD_SO_PATH, LOAD_ADDRESS_FMOD);
+        if (so_file_load(&so_mod_fmod, FMOD_SO_PATH, LOAD_ADDRESS_FMOD) < 0) {
+            l_fatal("libfmod.so could not be loaded.");
+            fatal_error("Error: could not load %s.", FMOD_SO_PATH);
+        }
+        so_relocate(&so_mod_fmod);
+        resolve_imports(&so_mod_fmod);
+        so_flush_caches(&so_mod_fmod);
+        so_initialize(&so_mod_fmod);
+        l_success("libfmod.so initialized.");
+    } else {
+        l_warn("%s not found -- FMOD audio may be unavailable.", FMOD_SO_PATH);
+    }
+
+    // 2. Load libfmodstudio.so if present
+    if (file_exists(FMODSTUDIO_SO_PATH)) {
+        l_info("Loading %s at 0x%08x...", FMODSTUDIO_SO_PATH, LOAD_ADDRESS_FMODSTUDIO);
+        if (so_file_load(&so_mod_fmodstudio, FMODSTUDIO_SO_PATH, LOAD_ADDRESS_FMODSTUDIO) < 0) {
+            l_fatal("libfmodstudio.so could not be loaded.");
+            fatal_error("Error: could not load %s.", FMODSTUDIO_SO_PATH);
+        }
+        so_relocate(&so_mod_fmodstudio);
+        resolve_imports(&so_mod_fmodstudio);
+        so_flush_caches(&so_mod_fmodstudio);
+        so_initialize(&so_mod_fmodstudio);
+        l_success("libfmodstudio.so initialized.");
+    } else {
+        l_warn("%s not found -- FMOD Studio may be unavailable.", FMODSTUDIO_SO_PATH);
+    }
+
+    // 3. Load main game binary (libbadland2.so)
     if (!file_exists(SO_PATH)) {
         fatal_error("Looks like you haven't installed the data files for this "
                     "port, or they are in an incorrect location. Please make "
                     "sure that you have %s file exactly at that path.", SO_PATH);
     }
 
-    if (so_file_load(&so_mod, SO_PATH, LOAD_ADDRESS) < 0) {
+    l_info("Loading %s at 0x%08x...", SO_PATH, LOAD_ADDRESS_GAME);
+    if (so_file_load(&so_mod, SO_PATH, LOAD_ADDRESS_GAME) < 0) {
         l_fatal("SO could not be loaded.");
         fatal_error("Error: could not load %s.", SO_PATH);
     }

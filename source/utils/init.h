@@ -19,6 +19,10 @@
 extern "C" {
 #endif
 
+extern so_module so_mod;
+extern so_module so_mod_fmod;
+extern so_module so_mod_fmodstudio;
+
 void resolve_imports(so_module *mod);
 
 void so_patch();

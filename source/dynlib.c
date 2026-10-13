@@ -59,6 +59,17 @@
 #include "reimpl/native_window.h"
 #include "reimpl/bitmap.h"
 
+// OpenSL ES dynamically queried by libfmod.so
+#include <SLES/OpenSLES.h>
+#include <SLES/OpenSLES_Android.h>
+
+// libOpenSLES.a contains an optional SndFile.o module with unreferenced sf_* calls.
+// SndFile is never used by FMOD (which uses BufferQueue), so stub them here.
+void *sf_open(const char *path, int mode, void *sfinfo) { return NULL; }
+int sf_close(void *sndfile) { return 0; }
+long long sf_seek(void *sndfile, long long frames, int whence) { return -1; }
+long long sf_read_short(void *sndfile, short *ptr, long long items) { return 0; }
+
 // Unwinder provided by the Vita toolchain's libgcc (verified: all 11 symbols
 // are T in libgcc.a, gcc 10.3.0). Forwarded, not stubbed: libbadland2.so is
 // C++ and throws across its own frames; ret0 here would corrupt exception flow.
@@ -145,9 +156,22 @@ extern const short *BIONIC_toupper_tab_;
 static FILE __sF_fake[3];
 
 void *dlsym_soloader(void * handle, const char * symbol) {
-    // Usage example:
-    // if (strcmp("AMotionEvent_getAxisValue", symbol) == 0)
-    //    return &AMotionEvent_getAxisValue;
+    if (!symbol)
+        return NULL;
+
+    // OpenSL ES dynamically loaded by libfmod.so
+    if (strcmp("slCreateEngine", symbol) == 0)
+        return &slCreateEngine;
+    if (strcmp("SL_IID_ENGINE", symbol) == 0)
+        return (void *)&SL_IID_ENGINE;
+    if (strcmp("SL_IID_ANDROIDSIMPLEBUFFERQUEUE", symbol) == 0)
+        return (void *)&SL_IID_ANDROIDSIMPLEBUFFERQUEUE;
+    if (strcmp("SL_IID_ANDROIDCONFIGURATION", symbol) == 0)
+        return (void *)&SL_IID_ANDROIDCONFIGURATION;
+    if (strcmp("SL_IID_PLAY", symbol) == 0)
+        return (void *)&SL_IID_PLAY;
+    if (strcmp("SL_IID_RECORD", symbol) == 0)
+        return (void *)&SL_IID_RECORD;
 
     l_error("dlsym: Unknown symbol \"%s\".", symbol);
     return NULL;
@@ -204,6 +228,7 @@ so_default_dynlib default_dynlib[] = {
         { "__aeabi_uldivmod", (uintptr_t)&__aeabi_uldivmod },
         { "__aeabi_unwind_cpp_pr0", (uintptr_t)&__aeabi_unwind_cpp_pr0 },
         { "__aeabi_unwind_cpp_pr1", (uintptr_t)&__aeabi_unwind_cpp_pr1 },
+        { "__assert2", (uintptr_t)&assert2 },
         { "__atomic_cmpxchg", (uintptr_t)&__atomic_cmpxchg },
         { "__atomic_dec", (uintptr_t)&__atomic_dec },
         { "__atomic_inc", (uintptr_t)&__atomic_inc },
@@ -829,6 +854,7 @@ so_default_dynlib default_dynlib[] = {
         { "sched_get_priority_max", (uintptr_t)&sched_get_priority_max },
         { "sched_get_priority_min", (uintptr_t)&sched_get_priority_min },
         { "sched_yield", (uintptr_t)&sched_yield },
+        { "setpriority", (uintptr_t)&ret0 },
 
 
         // wchar, wctype
@@ -1078,12 +1104,9 @@ so_default_dynlib default_dynlib[] = {
         { "writev", (uintptr_t)&writev_soloader },
 
 
-        // NOTE: ~47 FMOD/FMOD-Studio C++ UND imports deliberately NOT stubbed.
-        // libfmod.so + libfmodstudio.so ship inside the APK (armeabi-v7a) with
-        // only libc/log deps, so the strategy is to ship the REAL libraries and
-        // resolve against them (Phase 4 follow-up), not to fake FMOD_OK. Until
-        // then so_resolve logs them and the first real FMOD call is expected to
-        // be the next confirmed crash -- one bug at a time (port_progress.md).
+        // NOTE: ~47 FMOD/FMOD-Studio C++ imports are resolved dynamically
+        // via DT_NEEDED across the loaded module chain (libfmod.so and
+        // libfmodstudio.so loaded ahead of libbadland2.so in soloader_init_all).
 };
 
 void resolve_imports(so_module* mod) {
