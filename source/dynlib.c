@@ -158,6 +158,15 @@ static FILE __sF_fake[3];
 extern so_default_dynlib default_dynlib[];
 extern const size_t default_dynlib_count;
 
+void *dlopen_soloader(const char *filename, int flag) {
+    if (filename && strstr(filename, "OpenSLES")) {
+        l_info("dlopen(\"%s\"): refused, forcing FMOD to use AudioTrack output", filename);
+        return NULL;
+    }
+    l_debug("dlopen(\"%s\", %i): fake handle", filename ? filename : "(null)", flag);
+    return (void *)0x1;
+}
+
 void *dlsym_soloader(void * handle, const char * symbol) {
     if (!symbol)
         return NULL;
@@ -444,8 +453,10 @@ so_default_dynlib default_dynlib[] = {
             { "fread", (uintptr_t)&sceLibcBridge_fread },
             { "freopen", (uintptr_t)&sceLibcBridge_freopen },
             { "fseek", (uintptr_t)&sceLibcBridge_fseek },
+            { "fseeko", (uintptr_t)&sceLibcBridge_fseek },
             { "fsetpos", (uintptr_t)&sceLibcBridge_fsetpos },
             { "ftell", (uintptr_t)&sceLibcBridge_ftell },
+            { "ftello", (uintptr_t)&sceLibcBridge_ftell },
             { "fwide", (uintptr_t)&sceLibcBridge_fwide },
             { "fwrite", (uintptr_t)&sceLibcBridge_fwrite },
             { "getc", (uintptr_t)&sceLibcBridge_getc },
@@ -471,8 +482,10 @@ so_default_dynlib default_dynlib[] = {
             { "fread", (uintptr_t)&fread },
             { "freopen", (uintptr_t)&freopen },
             { "fseek", (uintptr_t)&fseek },
+            { "fseeko", (uintptr_t)&fseeko },
             { "fsetpos", (uintptr_t)&fsetpos },
             { "ftell", (uintptr_t)&ftell },
+            { "ftello", (uintptr_t)&ftello },
             { "fwide", (uintptr_t)&fwide },
             { "fwrite", (uintptr_t)&fwrite },
             { "getc", (uintptr_t)&getc },
@@ -491,8 +504,6 @@ so_default_dynlib default_dynlib[] = {
         { "chdir", (uintptr_t)&chdir },
         { "chmod", (uintptr_t)&chmod },
         { "dup", (uintptr_t)&dup },
-        { "fseeko", (uintptr_t)&fseeko }, // TODO: wrap normal fseek for SceLibc version?
-        { "ftello", (uintptr_t)&ftello },
         { "ftruncate", (uintptr_t)&ftruncate },
         { "getcwd", (uintptr_t)&getcwd },
         { "lseek", (uintptr_t)&lseek },
@@ -909,7 +920,7 @@ so_default_dynlib default_dynlib[] = {
         // libdl
         { "dlclose", (uintptr_t)&ret0 },
         { "dlerror", (uintptr_t)&ret0 },
-        { "dlopen", (uintptr_t)&ret1 },
+        { "dlopen", (uintptr_t)&dlopen_soloader },
         { "dlsym", (uintptr_t)&dlsym_soloader },
 
 

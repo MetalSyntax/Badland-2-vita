@@ -190,26 +190,149 @@ static jboolean FMOD_checkInit(jmethodID id, va_list args) {
 }
 
 static jboolean FMOD_supportsLowLatency(jmethodID id, va_list args) {
-    // checkInit && supportsLowLatency -> FMOD_OUTPUTTYPE_OPENSL (16), which is
-    // backed by the SDK's libOpenSLES. Otherwise FMOD picks AudioTrack (15),
-    // i.e. Java org.fmod.AudioDevice, which doesn't exist here.
+    // Return JNI_TRUE so libfmod's FMOD_Android_SetThreadAffinity passes the check
+    // without returning FMOD_ERR_INITIALIZATION (28).
     (void)id;
     (void)args;
     return JNI_TRUE;
 }
 
 static jint FMOD_getOutputSampleRate(jmethodID id, va_list args) {
-    // PS Vita native audio rate is 44100 Hz (backed by VitaSDK libOpenSLES Vita.o).
+    // Return 0 so libfmod chooses FMOD_OUTPUTTYPE_AUDIOTRACK (15),
+    // which delegates audio playback to org.fmod.AudioDevice via SceAudioOut.
     (void)id;
     (void)args;
-    return 44100;
+    return 0;
 }
 
 static jint FMOD_getOutputBlockSize(jmethodID id, va_list args) {
-    // 512 frames per buffer: low latency and matches OpenSLES buffer configuration.
+    // Return 0 so libfmod chooses FMOD_OUTPUTTYPE_AUDIOTRACK (15).
     (void)id;
     (void)args;
-    return 512;
+    return 0;
+}
+
+// --- org.fmod.AudioDevice implementation (FMOD AudioTrack output bridge) ---
+
+#include <psp2/audioout.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int s_audio_port = -1;
+static int s_audio_grain = 1024;
+static int16_t *s_audio_fifo = NULL;
+static int s_audio_fifo_len = 0; // in stereo frames (1 frame = 4 bytes)
+static int s_audio_fifo_cap = 0; // in stereo frames
+
+static jobject AudioDevice_ctor(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    l_info("AudioDevice.<init>() called");
+    return (jobject)1;
+}
+
+static jboolean AudioDevice_init(jmethodID id, va_list args) {
+    (void)id;
+    jint channels = va_arg(args, jint);
+    jint rate = va_arg(args, jint);
+    jint dsp_len = va_arg(args, jint);
+    jint num_buffers = va_arg(args, jint);
+
+    l_info("AudioDevice.init: channels=%d, rate=%d, dsp_len=%d, num_buffers=%d",
+           channels, rate, dsp_len, num_buffers);
+
+    if (s_audio_port >= 0) {
+        sceAudioOutOutput(s_audio_port, NULL);
+        sceAudioOutReleasePort(s_audio_port);
+        s_audio_port = -1;
+    }
+
+    if (rate != 44100 && rate != 48000) {
+        rate = 44100;
+    }
+
+    int grain = dsp_len;
+    if (grain <= 0 || grain % 64 != 0 || grain > 65472) {
+        grain = 1024;
+    }
+    s_audio_grain = grain;
+
+    s_audio_port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, grain, rate, SCE_AUDIO_OUT_MODE_STEREO);
+    if (s_audio_port < 0) {
+        l_error("AudioDevice.init: sceAudioOutOpenPort failed: 0x%08X", s_audio_port);
+        return JNI_FALSE;
+    }
+
+    int vol[2] = { SCE_AUDIO_VOLUME_0DB, SCE_AUDIO_VOLUME_0DB };
+    sceAudioOutSetVolume(s_audio_port, SCE_AUDIO_VOLUME_FLAG_L_CH | SCE_AUDIO_VOLUME_FLAG_R_CH, vol);
+
+    s_audio_fifo_cap = (grain * 4 > 8192) ? (grain * 4) : 8192;
+    if (s_audio_fifo) free(s_audio_fifo);
+    s_audio_fifo = calloc(s_audio_fifo_cap * 2, sizeof(int16_t));
+    s_audio_fifo_len = 0;
+
+    l_success("AudioDevice.init: SceAudioOut port %d ready (rate=%d, grain=%d, fifo_cap=%d)",
+              s_audio_port, rate, s_audio_grain, s_audio_fifo_cap);
+    return JNI_TRUE;
+}
+
+static void AudioDevice_write(jmethodID id, va_list args) {
+    (void)id;
+    jbyteArray bArr = va_arg(args, jbyteArray);
+    jint size = va_arg(args, jint);
+
+    if (s_audio_port < 0 || !bArr || size <= 0 || !s_audio_fifo) {
+        return;
+    }
+
+    const int16_t *src = (const int16_t *)bArr;
+    JavaDynArray *jda = (JavaDynArray *)bArr;
+    if (jda && jda->magic == 0xB00B1E5) {
+        src = (const int16_t *)jda->array;
+    }
+
+    if (!src) return;
+
+    int in_frames = size / (2 * sizeof(int16_t)); // 4 bytes per frame (stereo 16-bit)
+    if (in_frames <= 0) return;
+
+    if (s_audio_fifo_len + in_frames > s_audio_fifo_cap) {
+        s_audio_fifo_cap = s_audio_fifo_len + in_frames + s_audio_grain * 2;
+        int16_t *new_fifo = realloc(s_audio_fifo, s_audio_fifo_cap * 2 * sizeof(int16_t));
+        if (!new_fifo) {
+            l_error("AudioDevice.write: FIFO realloc failed");
+            return;
+        }
+        s_audio_fifo = new_fifo;
+    }
+
+    memcpy(s_audio_fifo + s_audio_fifo_len * 2, src, in_frames * 2 * sizeof(int16_t));
+    s_audio_fifo_len += in_frames;
+
+    while (s_audio_fifo_len >= s_audio_grain) {
+        sceAudioOutOutput(s_audio_port, s_audio_fifo);
+        s_audio_fifo_len -= s_audio_grain;
+        if (s_audio_fifo_len > 0) {
+            memmove(s_audio_fifo, s_audio_fifo + s_audio_grain * 2, s_audio_fifo_len * 2 * sizeof(int16_t));
+        }
+    }
+}
+
+static void AudioDevice_close(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    l_info("AudioDevice.close: releasing audio port %d", s_audio_port);
+    if (s_audio_port >= 0) {
+        sceAudioOutOutput(s_audio_port, NULL);
+        sceAudioOutReleasePort(s_audio_port);
+        s_audio_port = -1;
+    }
+    if (s_audio_fifo) {
+        free(s_audio_fifo);
+        s_audio_fifo = NULL;
+    }
+    s_audio_fifo_len = 0;
+    s_audio_fifo_cap = 0;
 }
 
 NameToMethodID nameToMethodId[] = {
@@ -236,11 +359,18 @@ NameToMethodID nameToMethodId[] = {
     { 1020, "JNI_getLoginState", METHOD_TYPE_INT },
     { 1021, "JNI_loginWithFacebook", METHOD_TYPE_VOID },
     { 1022, "JNI_logoutWithFacebook", METHOD_TYPE_VOID },
+    { 1023, "org/fmod/AudioDevice/<init>", METHOD_TYPE_OBJECT },
+    { 1024, "AudioDevice/<init>", METHOD_TYPE_OBJECT },
+    { 1025, "<init>", METHOD_TYPE_OBJECT },
+    { 1026, "init", METHOD_TYPE_BOOLEAN },
+    { 1027, "write", METHOD_TYPE_VOID },
+    { 1028, "close", METHOD_TYPE_VOID },
 };
 
 MethodsBoolean methodsBoolean[] = {
     { 1011, FMOD_checkInit },
     { 1012, FMOD_supportsLowLatency },
+    { 1026, AudioDevice_init },
 };
 MethodsByte methodsByte[] = {};
 MethodsChar methodsChar[] = {};
@@ -266,6 +396,9 @@ MethodsObject methodsObject[] = {
     { 1017, FacebookManager_JNI_getUserName },
     { 1018, FacebookManager_JNI_getUserFirstName },
     { 1019, FacebookManager_JNI_getUserSurname },
+    { 1023, AudioDevice_ctor },
+    { 1024, AudioDevice_ctor },
+    { 1025, AudioDevice_ctor },
 };
 MethodsShort methodsShort[] = {};
 MethodsVoid methodsVoid[] = {
@@ -274,6 +407,8 @@ MethodsVoid methodsVoid[] = {
     { 1010, FacebookManager_JNI_startupLogin },
     { 1021, FacebookManager_JNI_loginWithFacebook },
     { 1022, FacebookManager_JNI_logoutWithFacebook },
+    { 1027, AudioDevice_write },
+    { 1028, AudioDevice_close },
 };
 
 /*

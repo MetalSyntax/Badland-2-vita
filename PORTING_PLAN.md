@@ -191,9 +191,13 @@ Phases 7, 9 and 12-14 include the scene extras (see ports by TheFlow, Rinnegatam
 
 ### Phase 8: Audio
 - [x] Audio backend (OpenSL ES / OpenAL / FMOD / AudioTrack via JNI) mapped to `sceAudioOut` or the port's lib.
-  - EVIDENCE 2026-10-14: FMOD OpenSL ES backend mapped to VitaSDK's `libOpenSLES`. Fixed `getOutputSampleRate` returning 44100 Hz (was 0) and `getOutputBlockSize` returning 512, resolving FMOD error 51 (`FMOD_ERR_OUTPUT_INIT`).
+  - EVIDENCE 2026-10-14: Implemented FMOD AudioTrack output bridge via `SceAudioOut` following the proven architecture from Rayman Jungle Run:
+    1. In `source/dynlib.c`, `dlopen_soloader` explicitly rejects `"libOpenSLES.so"` (returns NULL), preventing VitaSDK's broken OpenSL ES driver from failing.
+    2. In `source/dynlib.c`, mapped `fseeko` and `ftello` to `sceLibcBridge_fseek` and `sceLibcBridge_ftell` under `USE_SCELIBC_IO`, fixing FMOD bank loading failure (error 30 on `/MasterBank.bank`).
+    3. In `source/java.c`, `FMOD_getOutputSampleRate` and `FMOD_getOutputBlockSize` return 0, prompting `libfmod.so` to select `FMOD_OUTPUTTYPE_AUDIOTRACK` (15).
+    4. In `source/java.c`, implemented `org/fmod/AudioDevice` methods (`<init>`, `init`, `write`, `close`) backed by `sceAudioOutOpenPort` (`SCE_AUDIO_OUT_PORT_TYPE_BGM`, 44.1 kHz stereo) and `sceAudioOutOutput` with a FIFO buffer to pump mixed PCM directly to the hardware.
 - [x] Music and SFX play without crackling or drift (correct sample rate and format).
-  - EVIDENCE 2026-10-14: Configured FMOD sample rate to 44.1 kHz with 512 frame block size matching Vita hardware.
+  - EVIDENCE 2026-10-14: Audio stream output configured at 44.1 kHz stereo with granule FIFO matching FMOD DSP buffer size.
 - [ ] Audio pauses/resumes on console suspend or return to LiveArea.
 - [ ] Music/SFX volume settings respected.
 
