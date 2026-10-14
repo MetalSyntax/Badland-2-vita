@@ -4,6 +4,18 @@ First official playable release of **Badland 2** for the PlayStation Vita and Pl
 
 ---
 
+## Changes since v1.0
+
+- **Touchscreen fixed:** the game only tracks pointer ids 0–4, but the loader passed the Vita's ever-growing touch report id, so touches were dropped. Fingers are now mapped to free slots 0–4 with per-finger DOWN/UP events (multi-touch works).
+- **Touch input lag fixed:** the input queue re-polled the hardware on every read, so a held finger generated MOVE events forever and the game's input loop never finished. Polling is now capped to once per ~8 ms.
+- **Audio fixed:** `supportsLowLatency()` returned true, making FMOD pick OpenSL ES, which the loader refuses (FMOD error 51). It now returns false, so FMOD uses the AudioTrack → `SceAudioOut` bridge.
+- **FPS drops fixed:** the logger called `sceIoSyncByFd` on every line from the game thread (~9 ms each). INFO/DEBUG lines are now synced at most every 200 ms.
+- **Save crash fixed:** hooking the 4-byte `FacebookAndroid::getState` overwrote the prologue of the adjacent `JNI_getUserId`, crashing on every save. The hook now targets `JNI_getLoginState`.
+- **Buttons:** Start opens the pause menu; Circle is unmapped.
+- **Known issue:** physical flap buttons (L / R / D-Pad / Stick / Cross) barely move the creature in gameplay; use the touchscreen.
+
+---
+
 ## Highlights & What's New in v1.0
 
 ### In-Game Milestone & 60 FPS Performance
@@ -16,14 +28,13 @@ First official playable release of **Badland 2** for the PlayStation Vita and Pl
   - **L Trigger / D-Pad Left / Left Stick Left:** Flap towards the left.
   - **R Trigger / D-Pad Right / Left Stick Right:** Flap towards the right.
   - **Cross ($\times$) / Up:** Dual-flap (ascend straight up).
-  - **Circle ($\bigcirc$):** Cancel / Back in menus.
   - **Start:** Pause game.
 - Full native multi-touch touchscreen input with pointer tracking; touching the screen immediately takes priority.
 
-### Full Audio System Fixed (FMOD Studio OpenSL ES)
+### Full Audio System Fixed (FMOD Studio → SceAudioOut)
 - Resolved **FMOD Error 51** (`FMOD_ERR_OUTPUT_INIT`):
   - FMOD calls JNI `org.fmod.FMOD.getOutputSampleRate()` and `getOutputBlockSize()` to configure its output device.
-  - Implemented these callbacks in `source/java.c` returning `44100` Hz and `512` frames per buffer, matching the VitaSDK OpenSL ES backend.
+  - Implemented these callbacks in `source/java.c` returning `44100` Hz and `512` frames per buffer, and `supportsLowLatency()` = false so FMOD uses its AudioTrack output, bridged to `SceAudioOut`.
   - All music tracks, ambient atmospheric sounds, and sound effects now play clearly.
 
 ### Stability & Crash Triage Patches

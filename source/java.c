@@ -190,11 +190,13 @@ static jboolean FMOD_checkInit(jmethodID id, va_list args) {
 }
 
 static jboolean FMOD_supportsLowLatency(jmethodID id, va_list args) {
-    // Return JNI_TRUE so libfmod's FMOD_Android_SetThreadAffinity passes the check
-    // without returning FMOD_ERR_INITIALIZATION (28).
+    // libfmod (0xcae94/0xcaebc): checkInit && supportsLowLatency -> OpenSL (16),
+    // else AudioTrack (15). OpenSL is refused in dlopen_soloader, so TRUE here
+    // made output init fail (FMOD error 51). FALSE -> org.fmod.AudioDevice bridge.
+    // (Only a missing method ID returns FMOD_ERR_INITIALIZATION 28, not the value.)
     (void)id;
     (void)args;
-    return JNI_TRUE;
+    return JNI_FALSE;
 }
 
 static jint FMOD_getOutputSampleRate(jmethodID id, va_list args) {

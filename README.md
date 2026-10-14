@@ -14,7 +14,7 @@ An enhanced, native port of **Badland 2** (Android) for the **PlayStation Vita**
 - **Physical Controls & Front Multi-Touch:** Full integration with PS Vita hardware controls:
   - Dual-flap physics controls mapped to physical **L / R Triggers**, **Left Analog Stick**, and **Face Buttons**.
   - Full front touchscreen support with dynamic touch tracking.
-- **Complete Audio Support:** Powered by native FMOD Studio and OpenSL ES at 44.1 kHz, playing all atmospheric ambient tracks and sound effects without distortion or missing channels.
+- **Complete Audio Support:** FMOD Studio's AudioTrack output is bridged to native `SceAudioOut` at 44.1 kHz (the VitaSDK OpenSL ES backend is avoided because it deadlocks).
 - **Persistent Shader Cache:** Utilizes vitaGL runtime shader binary caching (`ux0:data/badland2/cache/`) to eliminate shader compilation stutter during gameplay.
 - **Offline Soloader Patches:**
   - Bypasses nonexistent Facebook and Cheetah Mobile online servers.
@@ -33,11 +33,10 @@ An enhanced, native port of **Badland 2** (Android) for the **PlayStation Vita**
 | **Cross ($\times$)** | Dual Flap (ascend / forward) / Menu Confirm |
 | **Left Stick** | Directional Flap (Tilt Left/Right to flap in that direction) |
 | **D-Pad Left / Right** | Flap Left / Flap Right |
-| **Circle ($\bigcirc$)** | Back / Cancel / Menu Back |
 | **Start** | Pause Game / Resume |
-| **Touchscreen** | Native Touch Controls (Tap left/right side of screen to flap) |
+| **Touchscreen** | Native Touch Controls (Tap left/right side of screen to flap), up to 5 fingers |
 
-> **Note:** Touching the front screen takes priority and immediately suspends virtual button flapping until touch is released.
+> **Note:** Physical flap buttons (L / R / D-Pad / Stick / Cross) are still weak in gameplay — the touchscreen is the reliable control for now. Circle is intentionally unmapped.
 
 ---
 

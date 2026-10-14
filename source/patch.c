@@ -39,7 +39,9 @@ void so_patch(void) {
     }
 
     // Force Facebook state to logged out / disconnected
-    uintptr_t fb_getState_sym = so_symbol(&so_mod, "_ZN15FacebookAndroid8getStateEv");
+    // FacebookAndroid::getState is a 4-byte `b.w JNI_getLoginState`; the 8-byte
+    // hook trampoline would clobber the prologue of the adjacent JNI_getUserId.
+    uintptr_t fb_getState_sym = so_symbol(&so_mod, "JNI_getLoginState");
     if (fb_getState_sym) {
         hook_addr(fb_getState_sym, (uintptr_t)&ret0);
     }

@@ -315,6 +315,19 @@
        - Se hookeó `b::AudioEngine::debugBank(FMOD::Studio::Bank*)` (`_ZN1b11AudioEngine9debugBankEPN4FMOD6Studio4BankE`) a `noop_func`. `debugBank` es una función puramente cosmética que imprime eventos de FMOD en logcat y no afecta el gameplay ni el audio; anularla previene permanentemente cualquier desreferencia a `NULL` si algún banco no existe o falla en cargar.
   - **Build verificado:** `psvita-toolkit build` ejecutado exitosamente con código 0, generando `eboot.bin` y `badland2.vpk`.
 
+- **Crash al guardar `save.bin` (logs 014/015, Prefetch abort, PC = `libbadland2+0x4b1ac4` = `_GLOBAL_OFFSET_TABLE_`):**
+  - `SaveGame::save()` → `FacebookAndroid::getUserId()` → `JNI_getUserId`. El epílogo de `JNI_getUserId` (`ldmia sp!, {r4-r9,pc}`) sacó basura del stack: su prólogo `stmdb sp!, {r4-r9,lr}` nunca corrió.
+  - Causa: el hook de `FacebookAndroid::getState()` (0x1853a8) — esa función mide 4 bytes (`b.w JNI_getLoginState`) y el trampolín Thumb de `hook_addr` mide 8, así que pisaba los primeros 4 bytes de `JNI_getUserId` (0x1853ac). Se manifestó al registrar `JNI_getUserId` en `java.c` (antes salía temprano por "method not found").
+  - Fix (`source/patch.c`): hookear `JNI_getLoginState` (0x5c bytes) en vez de `getState`. Los demás hooks miden ≥16 bytes.
+  - Regla: antes de `hook_addr`, comprobar que la función mida ≥8 bytes (distancia al siguiente símbolo).
+
+- **Touch lento / hacen falta varios toques (log 016):**
+  - `input_queue.c` re-leía el hardware en cada `has_events`/`getEvent` con la cola vacía; con el dedo apoyado siempre generaba un `MOVE`, así que el bucle "vaciar input" del juego no terminaba hasta levantar el dedo (DOWN y UP llegaban en el mismo frame y el botón no se registraba).
+  - Fix: muestrear touch/pad como máximo una vez cada 8 ms (`sceKernelGetProcessTimeWide`).
+- **Crash en nivel tutorial (log 016, sin resolver):** Prefetch abort PC=0x1f0 en `b2Contact::Destroy` ← `b2ContactManager::Destroy` ← `b2Body::SetType` ← `GameObject::setDynamic` ← `SignalSystem::EventEnabler::action`. El `b2PolygonAndCircleContact` está sano, pero el `destroyFcn` leído de `s_registers` vale 0x1f2 (fixture con tipo de shape basura o tabla pisada). El dump no incluye heap ni `.bss` del `.so`: falta evidencia para la causa. Reprobar con el fix de input.
+
+- **Touch no responde (log 018):** el handler de input del juego (`.so` 0x13fac0) guarda dedos en una tabla de 5 entradas indexada por pointer id e ignora ids > 4; `input_queue.c` pasaba `SceTouchReport.id` (contador creciente de la Vita). Fix: asignar cada dedo a un slot libre 0..4, DOWN/UP por dedo, MOVE solo si hubo movimiento. Botones: START → `BUTTON_B` (pausa, bit NvGamepad 0x2000); CIRCLE sin mapear (pedido del usuario).
+
 ## Cómo seguir (una cosa a la vez)
 1. Desplegar el nuevo binario a la consola mediante `psvita-toolkit deploy --eboot`.
 2. Lanzar Badland 2 y verificar que:

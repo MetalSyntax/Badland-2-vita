@@ -266,10 +266,17 @@ void _log_print(int t, const char* fmt, ...) {
             if ((unsigned int)len >= sizeof(buffer_c))
                 len = (int)sizeof(buffer_c) - 1;
             sceIoWrite(_log_fd, buffer_c, len);
-            // Commit to disk now: on a crash the process dies without close
-            // and the file kept only its header (log 004).
-            // ponytail: per-line sync is slow; sync only >= WARN if frame-loop logging gets heavy.
-            sceIoSyncByFd(_log_fd, 0);
+            // Commit to disk: on a crash the process dies without close and the
+            // file kept only its header (log 004). A sync costs ~9 ms on the game
+            // thread (log 019: bursts of game ALOG lines dropped FPS), so sync
+            // problems right away and everything else at most every 200 ms.
+            // ponytail: a crash can lose up to 200 ms of INFO/DEBUG lines.
+            static SceUInt64 last_sync = 0;
+            SceUInt64 now = sceKernelGetProcessTimeWide();
+            if (t >= LT_WARN || now - last_sync >= 200000) {
+                sceIoSyncByFd(_log_fd, 0);
+                last_sync = now;
+            }
         }
     }
 
