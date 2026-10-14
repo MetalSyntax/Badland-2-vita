@@ -155,6 +155,9 @@ extern const short *BIONIC_toupper_tab_;
 
 static FILE __sF_fake[3];
 
+extern so_default_dynlib default_dynlib[];
+extern const size_t default_dynlib_count;
+
 void *dlsym_soloader(void * handle, const char * symbol) {
     if (!symbol)
         return NULL;
@@ -172,6 +175,12 @@ void *dlsym_soloader(void * handle, const char * symbol) {
         return (void *)&SL_IID_PLAY;
     if (strcmp("SL_IID_RECORD", symbol) == 0)
         return (void *)&SL_IID_RECORD;
+
+    // Anything else we already export to the .so imports (e.g. libfmod
+    // dlsym's AAssetManager_open from libandroid).
+    for (size_t i = 0; i < default_dynlib_count; i++)
+        if (strcmp(default_dynlib[i].symbol, symbol) == 0)
+            return (void *)default_dynlib[i].func;
 
     l_error("dlsym: Unknown symbol \"%s\".", symbol);
     return NULL;
@@ -291,6 +300,7 @@ so_default_dynlib default_dynlib[] = {
 
         // AAssetManager
         { "AAsset_close", (uintptr_t)&AAsset_close },
+        { "AAsset_getBuffer", (uintptr_t)&AAsset_getBuffer },
         { "AAsset_getLength", (uintptr_t)&AAsset_getLength },
         { "AAsset_getRemainingLength", (uintptr_t)&AAsset_getRemainingLength },
         { "AAsset_read", (uintptr_t)&AAsset_read },
@@ -1071,6 +1081,7 @@ so_default_dynlib default_dynlib[] = {
         { "AConfiguration_getCountry", (uintptr_t)&AConfiguration_getCountry },
         { "AConfiguration_getLanguage", (uintptr_t)&AConfiguration_getLanguage },
         { "AConfiguration_new", (uintptr_t)&AConfiguration_new },
+        { "AInputEvent_getDeviceId", (uintptr_t)&AInputEvent_getDeviceId },
         { "AInputEvent_getSource", (uintptr_t)&AInputEvent_getSource },
         { "AInputEvent_getType", (uintptr_t)&AInputEvent_getType },
         { "AInputQueue_attachLooper", (uintptr_t)&AInputQueue_attachLooper },
@@ -1108,6 +1119,8 @@ so_default_dynlib default_dynlib[] = {
         // via DT_NEEDED across the loaded module chain (libfmod.so and
         // libfmodstudio.so loaded ahead of libbadland2.so in soloader_init_all).
 };
+
+const size_t default_dynlib_count = sizeof(default_dynlib) / sizeof(default_dynlib[0]);
 
 void resolve_imports(so_module* mod) {
     __sF_fake[0] = *stdin;
