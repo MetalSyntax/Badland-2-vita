@@ -145,11 +145,157 @@
     1. **Multi-módulo FMOD real:** Carga encadenada de `ux0:data/badland2/libfmod.so` (0x98000000) y `ux0:data/badland2/libfmodstudio.so` (0x98200000) previa a `libbadland2.so` (0x98400000). Los 47 símbolos C++ de FMOD se resuelven nativamente vía `DT_NEEDED` sin stubs destructivos.
     2. **Soporte OpenSL ES:** Mapeo de `slCreateEngine` y `SL_IID_*` en `dlsym_soloader`, enlace con `libOpenSLES.a` del SDK de Vita, y stubs de bajo nivel para `sf_*` de SndFile.
     3. **Símbolos faltantes Bionic:** Añadidos `__assert2` y `setpriority` a `dynlib.c`.
-    4. **Caché de shaders y VitaGL:** Creación automática de directorios `ux0:data/badland2/gxp`, `cg` y `glsl` en `soloader_init_all`. Ajuste de memoria de VitaGL a 16 MB (`vglInitExtended`) según `README VITAGL.md`.
+    4. **Caché de shaders y VitaGL:** Creación automática de directorios `ux0:data/badland2/gxp`, `cg` y `glsl` en `soloader_init_all`. Llamada a `file_mkpath()` dentro de `glCompileShader_soloader` previo a guardar el binario compilado. Ajuste de memoria de VitaGL a 16 MB (`vglInitExtended`) según `README VITAGL.md`.
+    5. **Stubs de Login y Android ID JNI:** Mapeados `JNI_getAndroidID` (`LoginHandler`), `JNI_isLoggedIn` y `JNI_startupLogin` (`FacebookManager`) en `source/java.c` para evitar fallos de resolución de IDs de métodos.
+
+- **2026-10-13 — Análisis de `logs/badland2_004.log` + `badland2-psp2core-1791921147-...psp2dmp`:**
+  - **Log vacío** (solo cabecera): el proceso murió sin `sceIoClose` y exFAT no comprometió el tamaño del archivo. Fix: `sceIoSyncByFd` tras cada línea en `logger.c`.
+  - **Ojo con `psvita-toolkit analyze`:** auto-detectó la base de `libbadland2.so` en 0x97e6b000 (incorrecto) y simbolizó el PC como `ComponentBot::load`. Con 3 módulos la base real es libfmod=0x98000000 → el PC 0x980cadfc es **libfmod.so+0xcadfc** (código ARM, no Thumb).
+  - **Crash:** Data abort en función interna de libfmod (llamada desde `SystemI` vía selección de output) que hace `(*gGlobal->vm)->GetEnv(vm, &env, 0x10006)` con `vm == NULL` (R0=0). El `JavaVM*` en `[gGlobal]+0x68` lo escribe **el `JNI_OnLoad` de libfmod**, que el loader nunca llamaba (solo el de libbadland2).
+  - **Fix:**
+    1. `main.c` llama `JNI_OnLoad` de libfmod antes que el de libbadland2 (orden de `Main.java`: fmod → fmodstudio → badland2; fmodstudio no tiene `JNI_OnLoad`).
+    2. Esa misma función luego llama `org.fmod.FMOD.checkInit()Z` y `supportsLowLatency()Z`: ambas `true` ⇒ output 16 (OpenSL, respaldado por libOpenSLES del SDK); si no, 15 (AudioTrack vía Java, inexistente). Registradas en `java.c` devolviendo `true`, y `getOutputSampleRate`/`getOutputBlockSize` devolviendo `0` (lo que devuelve el Java real sin la propiedad; el `-1` por defecto de FalsoJNI no es válido).
+
+- **2026-10-13 — Análisis de `logs/badland2_005.log` + `badland2-psp2core-1791923619-...psp2dmp`:**
+  - **Avance:** FMOD inicializa (`libfmod JNI_OnLoad returned 0x10006`), GL/VitaGL arriba, carga de `data.bin`/`tex_SD`/fuente; corte en `Init Shaders`.
+  - **Crash:** thread `pthread`, PC en `SceLibKernel` (memcpy), R0=0, stack con `unserialize_shader` (vitaGL) ← `load_shader` (`glutil.c`). `load_shader` ignoraba el retorno de `file_load`: un `.gxp` cacheado vacío/truncado (p.ej. quedó en 0 bytes al morir el proceso a mitad de `file_save`, mismo efecto exFAT que el log 004) → `glShaderBinary` con buffer/size basura → `vglMalloc` NULL → memcpy a 0.
+  - **Fix (`glutil.c`):** si el `.gxp` no carga o mide ≤ 8 bytes se borra y se recompila desde el GLSL. Al guardar: solo si `GL_COMPILE_STATUS` OK y `len > 0`, vía `.tmp` + `sceIoRename` (escritura atómica).
+  - **Extra (`dynlib.c`):** `dlsym_soloader` ahora cae a la tabla `default_dynlib` (resuelve `AAssetManager_open` que libfmod pedía). `getauxval` sigue sin resolverse (FMOD cae a `/proc/self/auxv`, no fatal).
+
+- **2026-10-13 — Análisis de `logs/badland2_006.log` (sin .psp2dmp → cuelgue, se queda en la imagen de LiveArea):**
+  - El fix de shaders funcionó (2 `.gxp` corruptos detectados y recompilados). El log se corta después del 2º shader.
+  - `Calling nativeInitFmod...` nunca devuelve (tampoco en 005) y el heartbeat del hilo main nunca aparece → main bloqueado en `b::AudioEngine::init` (Studio::System::create → setSoftwareFormat → setDSPBufferSize → **Studio::System::initialize**, sospechoso: espera al hilo mixer/OpenSL). Probable que el render thread se bloquee luego contra el mismo lock de FMOD.
+  - Descartado: `syscall` (no logueó), wrappers `sem_*`/`pthread_*` parecen correctos para lo que importa FMOD.
+  - **Herramienta agregada:** watchdog en `main.c` — si una etapa de init dura > 20 s, loguea `watchdog: stuck in <etapa>` y fuerza un data abort para generar `.psp2dmp` con PC/LR de todos los hilos.
+
+- **2026-10-13 — Análisis de `logs/badland2_008.log` + `badland2-psp2core-1791940812-...psp2dmp`:**
+  - **Avance mayúsculo:** ¡El juego superó por completo la inicialización de FMOD, VitaGL, compilación de shaders (~110 s de shader cache), guardado de archivos de usuario (`user.bin`, `netcache.bin`), `StaticData` y la inicialización de `SocialManager`/`SocialCache`!
+  - **Ubicación real del crash:**
+    `PC = 0x985f1fa2` -> `libbadland2.so + 0x1f1fa2` (`b::StateMenuMain::init() + 0x7a`).
+    Instrucción: `ldr r0, [r0, #96]` con `R0 = 0x00000000` (Data Abort por desreferencia de puntero nulo).
+  - **Causa raíz identificada (cruzando .so, MurmurHash2 y logs):**
+    1. En `b::StateMenuMain::init()`, el motor llama a `f::UINodeLoader::loadNode("/ui/menu/main.txt", parent, 1)` y luego busca el nodo `"PROMOBANNER"` con `searchChildByName`. Al no encontrarlo (`NULL`), intenta leer su campo `[node + 96]` sin verificar y crashea.
+    2. ¿Por qué no existía `"PROMOBANNER"`? Porque `/ui/menu/main.txt` no cargó.
+    3. ¿Por qué no cargó `/ui/menu/main.txt`? Los assets del juego (menús, mundos como `/world/World.json`) están empaquetados dentro de `data.bin` (verificado con su función hash MurmurHash2 con seed `0x0ab1cdb3`).
+    4. Al arrancar `StaticData::init()`, `f::DataPack::openPack("data.bin", 0)` intenta leer la cabecera (4 bytes para el número de archivos y luego `N * 24` bytes para la tabla de contenidos) mediante `AAsset_read()`.
+    5. **Bug crítico en `source/reimpl/asset_manager.cpp`:** En `AAssetManager_open()`, tras calcular el `fileSize` con `fseek/ftell`, ¡había una llamada errónea a `fclose(a->f)`! Por tanto, `a->f` quedaba CERRADO inmediatamente tras abrirse. Cualquier llamada subsiguiente a `AAsset_read()` (`data.bin`, `tex_SD/RAW.bin`, `tex_SD/PVRTC.bin`) fallaba devolviendo 0 bytes leídos. El motor creía que los paquetes estaban vacíos (0 archivos indexados), por lo que cualquier búsqueda en `DataPack` fallaba y caía al fallback de disco suelto que no existía en el APK.
+    6. Además, `AAsset_seek()` devolvía `0` (retorno de `fseek`) en vez de la nueva posición de byte exigida por la especificación de Android NDK (`ftell`), `AAsset_close()` llamaba al `fclose()` estándar en lugar de `sceLibcBridge_fclose()`, y `AAsset_openFileDescriptor()` abría nuevos descriptores de archivo sin liberarlos en `AAsset_close()`.
+  - **Solución implementada:**
+    1. `source/reimpl/asset_manager.cpp`: Se eliminó el `fclose(a->f)` destructivo en `AAssetManager_open()`.
+    2. Se implementó `AAsset_seek()` retornando la posición real obtenida mediante `ftell/sceLibcBridge_ftell`.
+    3. Se implementó `AAsset_getRemainingLength()`, `AAsset_getLength()` y la función faltante `AAsset_getBuffer()`, vinculada en `source/dynlib.c`.
+    4. Se aseguró la apertura en modo binario `"rb"` y la normalización de rutas (eliminación de barras iniciales y fallback a `DATA_PATH`).
+    5. Se evitó fuga de descriptores de archivo en `AAsset_openFileDescriptor()` manteniendo `fd` en la estructura del asset y cerrándolo en `AAsset_close()`.
+  - **Build verificado:** `eboot.bin` y `badland2.vpk` compilados limpiamente.
+
+- **2026-10-14 — Análisis de `logs/badland2_011.log` + `badland2-psp2core-1791948952-0x0006992d0b-eboot.bin.psp2dmp`:**
+  - **Contexto:** Al arrancar en consola, el log se cortó abruptamente en `Init Shaders`.
+  - **Ubicación y Crash:**
+    `PC = 0xe00003d6` en `SceLibKernel` (`sceClibMemcpy`), `R1 = 0x00000000` (puntero fuente NULL), `LR = 0x81014389` (`serialize_shader` en vitaGL vendored).
+    Stack trace completo: `f::ShaderManager::init()` (`0x35748f`) → `addShader()` (`0x35740b`) → `createShader()` (`0x341d37`) → `GLES_makeShader()` (`0x341c69`) → `glCompileShader_soloader()` (`glutil.c`).
+  - **Causa raíz identificada:**
+    1. En `source/utils/glutil.c`, existía un bloque `#ifdef DUMP_COMPILED_SHADERS` que llamaba a `vglGetShaderBinary(shader, 32 * 1024, &len, bin)` inmediatamente tras `glCompileShader(shader)`.
+    2. Sin embargo, en `gl_preload()`, se configura `vglSetSemanticBindingMode(VGL_MODE_POSTPONED)`. En modo pospuesto, vitaGL no compila los shaders GLSL en `glCompileShader` sino que posterga su compilación hasta `glLinkProgram` (para enlazar correctamente los atributos y semánticas de hardware Vita). Por ende, en `glCompileShader`, `s->prog` es `NULL`.
+    3. En `vendor/vitaGL/source/custom_shaders.c`, la función `vglGetShaderBinary()` verificaba si `s->prog == NULL` y establecía `GL_INVALID_OPERATION`, pero **le faltaba un `return;`**, continuando la ejecución hacia `serialize_shader()`, la cual ejecutaba `sceClibMemcpy(buf, s->prog, s->size)` con `s->prog == NULL` (Data Abort instantáneo en `SceLibKernel`).
+  - **Solución implementada:**
+    1. `vendor/vitaGL/source/custom_shaders.c`: Agregado `return;` en `vglGetShaderBinary()` tras detectar `s->prog == NULL`, y guarda defensiva en `serialize_shader()`.
+    2. `CMakeLists.txt`:
+       - Activado el cache nativo de vitaGL mediante `HAVE_SHADER_CACHE=1` en `VITAGL_MAKE_FLAGS_STR`. VitaGL calcula el hash XXH3 de cada shader y cachea el binario compilado de forma segura durante `glLinkProgram` con todas las semánticas resueltas.
+       - Limitado `valid_dump_formats` a solo `CG` (deshabilitando el dumper ad-hoc para GLSL que rompía con `VGL_MODE_POSTPONED`).
+       - Renombrado `.vitagl_flags` a `vitagl_flags` en `CMakeLists.txt` para evitar que `rsync` lo excluyera como dotfile.
+    3. `source/utils/glutil.c`:
+       - Añadido `vglSetShaderCachePath(DATA_PATH "cache")` en `gl_preload()`.
+       - Protegido `glCompileShader_soloader()` con `!defined(USE_GLSL_SHADERS)` para evitar llamadas a `vglGetShaderBinary` en shaders GLSL no enlazados.
+       - Simplificado `load_shader()` para GLSL como un passthrough limpio hacia `glShaderSource`.
+    4. `source/utils/init.c`: Añadida creación de subdirectorios `ux0:data/badland2/cache/v4/v` y `f` requeridos por el shader cache de vitaGL.
+    5. `.gitignore`: Anclados artefactos de build raíz (`/Makefile`, `/CMakeFiles/`, etc.) para prevenir que `rsync` excluyera `vendor/vitaGL/Makefile`.
+  - **Build verificado:** `psvita-toolkit build` completado exitosamente (código 0). VPK y eboot generados en `build/`.
+
+- **2026-10-14 — Análisis de `logs/badland2_012.log` (¡Hito mayor: Ingame alcanzado!):**
+  - **Contexto:** Al probar en consola física, ¡el juego superó toda la carga, inicialización de datos, shaders y menús, cargando el nivel Genesis (`/level/GENESIS`, `Total triangles: 889`, `Mesh count: 162`, `objects: 1413`) y activando checkpoints (`ActiveWorld: activating cp 0`, `cp 1`) manteniéndose vivo a 150+ segundos!
+  - **Problema 1: Ausencia de sonido (FMOD Error 51):**
+    - En el log: `bAudioEngine.cpp(128): FMOD error 51 - Error initializing output device.`
+    - Desensamblando `b::AudioEngine::init()` (0x1ad9b8) y `libfmod.so`:
+      1. El motor llama a `FMOD::System::setSoftwareFormat(0, ...)` (0 = usar tasa de muestreo del hardware Android devuelta por Java).
+      2. FMOD llama al método JNI `org.fmod.FMOD.getOutputSampleRate()`, el cual en `source/java.c` devolvía `0`.
+      3. FMOD procede a inicializar OpenSL ES llamando a `CreateAudioPlayer` con un formato PCM con `samplesPerSec = 0`.
+      4. En `libOpenSLES.a` (`sles.o`), la función `checkDataFormat` valida la tasa de muestreo contra una lista estricta (8000, 11025, ..., 44100, 48000). Al recibir 0, falla inmediatamente con `SL_RESULT_CONTENT_UNSUPPORTED` (9).
+      5. `CreateAudioPlayer` falla y FMOD aborta la inicialización con el código de error 51 (`FMOD_ERR_OUTPUT_INIT`), poniendo `m_system` a NULL (lo que causaba los posteriores errores `FMOD error 30 - An invalid object handle was used`).
+    - **Solución implementada:**
+      - En `source/java.c`: Se implementó `FMOD_getOutputSampleRate` devolviendo la tasa nativa del backend de PS Vita `44100` Hz, y `FMOD_getOutputBlockSize` devolviendo `512` frames.
+      - En `source/utils/init.c`: Se añadió la creación de los directorios `DATA_PATH "logs"` y `saves` para que el archivo `stderr.log` de OpenSL ES se guarde correctamente.
+  - **Problema 2: Controles no responsivos:**
+    - Diagnóstico:
+      1. El muestreo de hardware de PS Vita no estaba iniciado (`sceTouchSetSamplingState` y `sceCtrlSetSamplingModeExt` nunca se llamaban en el arranque).
+      2. `Main_JNI_isControllerOnly` en `source/java.c` devolvía `1`, indicando erróneamente al juego que el dispositivo no tenía pantalla táctil.
+      3. `AInputQueue` en `source/reimpl/input_queue.c` y los accesores de `AInputEvent` en `source/reimpl/input_event.c` eran stubs vacíos que nunca encolaban ni leían eventos.
+    - **Solución implementada:**
+      - En `source/utils/init.c`: Se inicializó `sceCtrlSetSamplingModeExt(SCE_CTRL_MODE_ANALOG_WIDE)`, `sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START)` y se desactivó el panel trasero (`SCE_TOUCH_SAMPLING_STATE_STOP`) para evitar toques accidentales.
+      - En `source/java.c`: Se cambió `Main_JNI_isControllerOnly` para devolver `0` (pantalla táctil activa).
+      - En `source/reimpl/input_event.h` y `input_event.c`: Se implementó la estructura completa `AInputEvent` y todos los getters Android NDK requeridos (`AInputEvent_getType`, `AInputEvent_getSource`, `AInputEvent_getDeviceId`, `AKeyEvent_getAction`, `AKeyEvent_getKeyCode`, `AMotionEvent_getAction`, `AMotionEvent_getPointerCount`, `AMotionEvent_getPointerId`, `AMotionEvent_getX`, `AMotionEvent_getY`, `AMotionEvent_getAxisValue`).
+      - En `source/reimpl/input_queue.c`:
+        - Sistema de cola circular thread-safe con `pthread_mutex_t`.
+        - Muestreo de pantalla táctil frontal (`sceTouchPeek`) escalado a 960x544 con seguimiento de IDs de puntero y eventos `DOWN`, `MOVE` y `UP`.
+        - Muestreo de botones físicos (`sceCtrlPeekBufferPositive`) mapeados a `AKeyEvent` (Cross = Button A, Circle = Button B, Square = Button X, Triangle = Button Y, D-Pad, L1, R1, Start, Select).
+        - **Mapeo virtual de aleteo ingame para Badland 2:**
+          - L Trigger / D-Pad Izquierda / Stick Izquierdo Izquierda (< 80) → Aleteo hacia la izquierda (toque virtual en X=240, Y=272).
+          - R Trigger / D-Pad Derecha / Stick Izquierdo Derecha (> 175) → Aleteo hacia la derecha (toque virtual en X=720, Y=272).
+          - Cruz / D-Pad Arriba / Stick Arriba (< 80) → Aleteo simultáneo para ascender.
+          - Si el usuario toca la pantalla física, los aleteos virtuales se cancelan de inmediato dando total prioridad a la pantalla táctil.
+  - **Build verificado:** `psvita-toolkit build` completado exitosamente (código 0). VPK y eboot listos en `build/`.
+
+- **2026-10-14 — Análisis de `logs/badland2_013.log` y Crash Dump `badland2-psp2core-1792002853-0x00062337ef-eboot.bin.psp2dmp`:**
+  - **Contexto:** El usuario confirmó que llegó a in-game (nivel Genesis visible a 60 FPS según captura `screenshots/fg/2026-10-14/2026-10-14-143408.jpg`), pero sufrió un crash al pausar / cambiar de estado a los 56.6s.
+  - **Triage del crash dump (`0x00062337ef`):**
+    - Hilo causante: `pthread` (ID: `0x400101b7`).
+    - Tipo de excepción: `Data abort exception (0x30004)` (intento de lectura en dirección de memoria inválida).
+    - Registros:
+      - `PC = 0x985d0cc8` (`libbadland2.so` base `0x98400000` + `0x1d0cc8`).
+      - `LR = 0x985d0cc1`.
+      - `R0 = 0x00000000` (puntero NULL).
+      - `R1 = 0x988c2648`.
+    - Desensamblado en `0x1d0cc8`:
+      - La función es `b::StateGamePause::requestFacebookFriendsInfo(int)` (inicio en `0x1d0c8c`).
+      - Instrucción que falla: `ldr r3, [r0, #0]` con `r0 = 0` (dereferencia de puntero NULL).
+  - **Causa raíz identificada (cadena de causalidad):**
+    1. En el log 013:
+       ```
+       [000696][ 56.405][INFO ] [ALOG][Badland2] loading ui is 9
+       [000697][ 56.656][INFO ] [ALOG][Badland2] IAP::isNetConnected()1
+       [000698][ 56.669][DEBUG] [ALOG][Badland2] Failed to find method id of JNI_getUserId
+       ```
+    2. Al entrar a la pausa (UI 9), la función `b::IAP::isNetConnected()` evalúa si hay conexión.
+    3. En `JNI_IsNetConnected@@Base` (offset `0x247160`), si el método no se encuentra en Java (`f::JniUtils::getStaticMethodInfo` devuelve 0), el código binario tiene un fallback por defecto que establece `r5 = 1` y retorna `1` (true).
+    4. Asimismo, `JNI_getLoginState@@Base` (offset `0x18536c`) cae en un fallback similar retornando `1` (sesión iniciada).
+    5. Creyendo falsamente que había conexión y login de Facebook activo, `b::StateGamePause::showMenu` invoca `requestFacebookFriendsInfo(int)`.
+    6. Dicha función carga el singleton de red/social desde el GOT, el cual es `NULL` en modo offline soloader, y desreferencia inmediatamente su vtable (`[r0, #0]`), provocando el Data Abort en `0x1d0cc8`.
+  - **Solución implementada:**
+    1. `source/patch.c`:
+       - Se hookeó `b::IAP::isNetConnected()` (`_ZN1b3IAP14isNetConnectedEv`) y `b::IAPAndroid::IsNetConnected()` (`_ZN1b10IAPAndroid14IsNetConnectedEv`) para retornar siempre `0` (offline).
+       - Se hookeó `FacebookAndroid::getState()` (`_ZN15FacebookAndroid8getStateEv`) para retornar siempre `0` (desconectado).
+       - Se hookearon `b::StateGamePause::requestFacebookFriendsInfo` (`_ZN1b14StateGamePause26requestFacebookFriendsInfoEi`), `requestChallengeRankInfo` (`_ZN1b14StateGamePause24requestChallengeRankInfoEi`) y `requestRushFriendsInfo` (`_ZN1b14StateGamePause22requestRushFriendsInfoEii`) como funciones no-op seguras.
+       - Se hookearon las consultas de amigos de Facebook en la selección de niveles (`StateLevelSelect` y `StateLevelSelectBonus`) como no-op para evitar desreferencias similares en menús de mapa.
+    2. `source/java.c`:
+       - Se agregaron las implementaciones FalsoJNI para `com/frogmind/badland2/FacebookManager`:
+         - `JNI_getUserId` → retorna cadena vacía `""`.
+         - `JNI_getUserTokenString` → retorna cadena vacía `""`.
+         - `JNI_getUserName` → retorna cadena vacía `""`.
+         - `JNI_getUserFirstName` → retorna cadena vacía `""`.
+         - `JNI_getUserSurname` → retorna cadena vacía `""`.
+         - `JNI_getLoginState` → retorna `0` (desconectado).
+         - `JNI_loginWithFacebook` y `JNI_logoutWithFacebook` → no-op seguro.
+    3. `.gitignore`: Se ajustaron las reglas para no ignorar `vendor/vitaGL` ni los iconos de LiveArea, garantizando builds limpios y reproducibles mediante `psvita-toolkit`.
+    4. Documentación:
+       - Actualizado `README.md` siguiendo el estándar de los mejores ports de PS Vita (Rayman Jungle Run, The Impossible Game).
+       - Creado `RELEASE.md` detallando las novedades de la v1.0, controles y guía de instalación.
+  - **Build verificado:** `psvita-toolkit build` ejecutado exitosamente generando el VPK y `eboot.bin` actualizados.
 
 ## Cómo seguir (una cosa a la vez)
-1. Copiar `libfmod.so` y `libfmodstudio.so` (desde `badland2_extract/lib/armeabi-v7a/`) a `ux0:data/badland2/`.
-2. Instalar el nuevo `badland2.vpk` (o enviar el nuevo `eboot.bin` a `ux0:app/PSVBL0002/eboot.bin`).
-3. Iniciar el juego en la consola física.
-4. El cargador inicializará FMOD Studio real, guardará la caché de shaders en disco y continuará con la ejecución del juego.
-5. Revisar el nuevo log `ux0:data/badland2/logs/badland2_004.log`.
+1. Desplegar el nuevo binario a la consola mediante `psvita-toolkit deploy --eboot`.
+2. Lanzar Badland 2 y verificar que:
+   - Al pulsar Start o acceder al menú de pausa ingame, el juego entra a la pausa sin crashear.
+   - La navegación de los botones del menú de pausa (Reanudar, Reiniciar Checkpoint, Opciones) responde fluidamente.
+   - El sonido ambiental y efectos se reproducen de manera continua.
+3. Continuar disfrutando de la campaña de Badland 2 a 60 FPS en PS Vita.
+
+
