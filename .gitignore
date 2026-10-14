@@ -26,10 +26,10 @@ assets/
 
 # Build artifacts
 /build/
-CMakeCache.txt
-CMakeFiles/
-Makefile
-cmake_install.cmake
+/CMakeCache.txt
+/CMakeFiles/
+/Makefile
+/cmake_install.cmake
 *.elf
 *.self
 *.vpk
@@ -52,4 +52,17 @@ __pycache__/
 .vscode/
 .idea/
 *.swp
-cmake-build-*/
+# Screenshots and temporary media
+screenshots/
+*.bak
+*.webp
+The_logo_of_Badland_2.png
+README VITAGL.md
+maxresdefault.jpg
+compile_commands.json
+.claude/
+vendor/vitaGL/libvitaGL.a
+vendor/vitaGL/source/*.o
+vendor/vitaGL/source/utils/*.o
+vendor/vitaGL/source/utils/preprocessor/*.o
+decompiled/

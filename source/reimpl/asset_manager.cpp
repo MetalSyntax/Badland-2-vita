@@ -6,19 +6,24 @@
 #include <cstring>
 #include <cstdio>
 #include <fcntl.h>
+#include <unistd.h>
+#ifdef USE_SCELIBC_IO
 #include <libc_bridge/libc_bridge.h>
+#endif
 #include <string>
 
 typedef struct assetManager {
-    int dummy = 0; // TODO: mb we will need to store something here in future
+    int dummy = 0;
     pthread_mutex_t mLock;
 } assetManager;
 
 typedef struct aAsset {
     char * filename;
     FILE* f;
+    int fd;
     size_t bytesRead;
     size_t fileSize;
+    void * buffer;
 } asset;
 
 static AAssetManager * g_AAssetManager = nullptr;
@@ -27,7 +32,6 @@ AAssetManager * AAssetManager_create() {
     if (g_AAssetManager) return g_AAssetManager;
 
     assetManager am;
-
     pthread_mutex_init(&am.mLock, nullptr);
 
     g_AAssetManager = (AAssetManager *) malloc(sizeof(assetManager));
@@ -37,38 +41,75 @@ AAssetManager * AAssetManager_create() {
 }
 
 AAsset* AAssetManager_open(AAssetManager* mgr, const char* filename, int mode) {
-    std::string realp = std::string(DATA_PATH) + std::string("assets/") + std::string(filename);
+    if (!filename) return nullptr;
+
+    const char* p = filename;
+    while (*p == '/') p++;
+    while (p[0] == '.' && p[1] == '/') p += 2;
+
+    std::string rel_path = p;
+    std::string realp = std::string(DATA_PATH) + std::string("assets/") + rel_path;
 
     auto * a = new aAsset;
-    a->filename = (char *) malloc(realp.length() + 1);
-    strcpy(a->filename, realp.c_str());
+    a->filename = strdup(realp.c_str());
     a->bytesRead = 0;
+    a->fileSize = 0;
+    a->fd = -1;
+    a->buffer = nullptr;
 
 #ifdef USE_SCELIBC_IO
-    a->f = sceLibcBridge_fopen((const char *)a->filename, "r");
+    a->f = sceLibcBridge_fopen(a->filename, "rb");
 #else
-    a->f = fopen((cost char *)a->filename, "r");
+    a->f = fopen(a->filename, "rb");
 #endif
+
+    // Fallback 1: if path starts with "../", try under DATA_PATH directly without "../"
+    if (!a->f && rel_path.rfind("../", 0) == 0) {
+        std::string fallback = std::string(DATA_PATH) + rel_path.substr(3);
+#ifdef USE_SCELIBC_IO
+        a->f = sceLibcBridge_fopen(fallback.c_str(), "rb");
+#else
+        a->f = fopen(fallback.c_str(), "rb");
+#endif
+        if (a->f) {
+            free(a->filename);
+            a->filename = strdup(fallback.c_str());
+        }
+    }
+
+    // Fallback 2: try directly under DATA_PATH
+    if (!a->f) {
+        std::string fallback2 = std::string(DATA_PATH) + rel_path;
+#ifdef USE_SCELIBC_IO
+        a->f = sceLibcBridge_fopen(fallback2.c_str(), "rb");
+#else
+        a->f = fopen(fallback2.c_str(), "rb");
+#endif
+        if (a->f) {
+            free(a->filename);
+            a->filename = strdup(fallback2.c_str());
+        }
+    }
 
     if (!a->f) {
         free(a->filename);
         delete a;
-        a = nullptr;
-    } else {
-#ifdef USE_SCELIBC_IO
-        sceLibcBridge_fseek(a->f, 0, SEEK_END);
-        a->fileSize = sceLibcBridge_ftell(a->f);
-        sceLibcBridge_fseek(a->f, 0, SEEK_SET);
-        sceLibcBridge_fclose(a->f);
-#else
-        fseek(a->f, 0, SEEK_END);
-        a->fileSize = ftell(a->f);
-        fseek(a->f, 0, SEEK_SET);
-        fclose(a->f);
-#endif
+        l_warn("[AAssetManager] AAssetManager_open(%p, %s, %i): not found", mgr, filename, mode);
+        return nullptr;
     }
 
-    l_debug("[AAssetManager] AAssetManager_open(%p, %s, %i): %p", mgr, realp.c_str(), mode, a);
+#ifdef USE_SCELIBC_IO
+    sceLibcBridge_fseek(a->f, 0, SEEK_END);
+    a->fileSize = sceLibcBridge_ftell(a->f);
+    sceLibcBridge_fseek(a->f, 0, SEEK_SET);
+#else
+    fseek(a->f, 0, SEEK_END);
+    a->fileSize = ftell(a->f);
+    fseek(a->f, 0, SEEK_SET);
+#endif
+
+    l_debug("[AAssetManager] AAssetManager_open(%p, %s, %i): opened %s (size %zu) -> %p",
+            mgr, filename, mode, a->filename, a->fileSize, a);
     return (AAsset *) a;
 }
 
@@ -77,20 +118,39 @@ void AAsset_close(AAsset* asset) {
 
     if (asset) {
         auto * a = (aAsset *) asset;
-        free(a->filename);
-        fclose(a->f);
+        if (a->fd >= 0) {
+            close(a->fd);
+            a->fd = -1;
+        }
+        if (a->f) {
+#ifdef USE_SCELIBC_IO
+            sceLibcBridge_fclose(a->f);
+#else
+            fclose(a->f);
+#endif
+            a->f = nullptr;
+        }
+        if (a->buffer) {
+            free(a->buffer);
+            a->buffer = nullptr;
+        }
+        if (a->filename) {
+            free(a->filename);
+            a->filename = nullptr;
+        }
         delete a;
     }
 }
 
 int AAsset_read(AAsset* asset, void* buf, size_t count) {
-    l_debug("AAsset_read(%p, %p, %i)", asset, buf, count);
-
-    if (!asset) {
+    if (!asset || !buf) {
         return -1;
     }
 
     auto * a = (aAsset *) asset;
+    if (!a->f) {
+        return -1;
+    }
 
 #ifdef USE_SCELIBC_IO
     size_t ret = sceLibcBridge_fread(buf, 1, count, a->f);
@@ -103,81 +163,131 @@ int AAsset_read(AAsset* asset, void* buf, size_t count) {
         return (int) ret;
     } else {
 #ifdef USE_SCELIBC_IO
-        if (ret == 0 || sceLibcBridge_feof(a->f)) {
+        if (count == 0 || sceLibcBridge_feof(a->f)) {
 #else
-        if (ret == 0 || feof(a->f)) {
+        if (count == 0 || feof(a->f)) {
 #endif
             return 0;
         } else {
+            l_warn("AAsset_read(%p, %p, %u): error (-1)", asset, buf, (unsigned int)count);
             return -1;
         }
     }
 }
 
 off_t AAsset_seek(AAsset* asset, off_t offset, int whence) {
-    l_debug("AAsset_seek(%p, %d, %i)", asset, offset, whence);
-
     if (!asset) {
         return (off_t) -1;
     }
 
     auto * a = (aAsset *) asset;
+    if (!a->f) {
+        return (off_t) -1;
+    }
 
 #ifdef USE_SCELIBC_IO
-    auto ret = (off_t) sceLibcBridge_fseek(a->f, offset, whence);
+    int res = sceLibcBridge_fseek(a->f, offset, whence);
+    if (res != 0) return (off_t) -1;
+    long pos = sceLibcBridge_ftell(a->f);
 #else
-    auto ret = (off_t) fseek(a->f, offset, whence);
+    int res = fseek(a->f, offset, whence);
+    if (res != 0) return (off_t) -1;
+    long pos = ftell(a->f);
 #endif
 
-    return ret;
+    if (pos >= 0) {
+        a->bytesRead = (size_t)pos;
+    }
+    return (off_t) pos;
 }
 
 off_t AAsset_getRemainingLength(AAsset* asset) {
-    l_debug("AAsset_getRemainingLength");
     if (!asset) {
         return (off_t) -1;
     }
 
     auto * a = (aAsset *) asset;
+    if (!a->f) {
+        return (off_t) -1;
+    }
 
-    return (off_t)(a->fileSize - a->bytesRead);
+#ifdef USE_SCELIBC_IO
+    long pos = sceLibcBridge_ftell(a->f);
+#else
+    long pos = ftell(a->f);
+#endif
+    if (pos < 0) pos = (long)a->bytesRead;
+    off_t remaining = (a->fileSize > (size_t)pos) ? (off_t)(a->fileSize - (size_t)pos) : (off_t)0;
+    l_debug("AAsset_getRemainingLength(%p): %ld", asset, (long)remaining);
+    return remaining;
 }
 
 off_t AAsset_getLength(AAsset* asset) {
-    l_debug("AAsset_getLength");
     if (!asset) {
         return (off_t) -1;
     }
 
     auto * a = (aAsset *) asset;
-
+    l_debug("AAsset_getLength(%p): %u", asset, (unsigned int)a->fileSize);
     return (off_t)a->fileSize;
 }
 
+const void* AAsset_getBuffer(AAsset* asset) {
+    if (!asset) return nullptr;
+    auto * a = (aAsset *) asset;
+    if (a->buffer) return a->buffer;
+    if (!a->f || a->fileSize == 0) return nullptr;
+
+    a->buffer = malloc(a->fileSize);
+    if (!a->buffer) return nullptr;
+
+#ifdef USE_SCELIBC_IO
+    long cur = sceLibcBridge_ftell(a->f);
+    sceLibcBridge_fseek(a->f, 0, SEEK_SET);
+    size_t read_bytes = sceLibcBridge_fread(a->buffer, 1, a->fileSize, a->f);
+    sceLibcBridge_fseek(a->f, cur, SEEK_SET);
+#else
+    long cur = ftell(a->f);
+    fseek(a->f, 0, SEEK_SET);
+    size_t read_bytes = fread(a->buffer, 1, a->fileSize, a->f);
+    fseek(a->f, cur, SEEK_SET);
+#endif
+
+    if (read_bytes < a->fileSize) {
+        l_warn("AAsset_getBuffer: read %zu of %zu bytes", read_bytes, a->fileSize);
+    }
+    return a->buffer;
+}
+
 int AAsset_openFileDescriptor(AAsset* asset, off_t* outStart, off_t* outLength) {
-    l_debug("AAsset_openFileDescriptor(%p)", asset);
     if (!asset) {
         return -1;
     }
 
     auto * a = (aAsset *) asset;
-    int fd = open(a->filename, O_RDONLY);
-    if (fd < 0) {
-        l_error("AAsset_openFileDescriptor: cannot open %s", a->filename);
-        return -1;
+    if (a->fd < 0) {
+        a->fd = open(a->filename, O_RDONLY);
+        if (a->fd < 0) {
+            l_error("AAsset_openFileDescriptor: cannot open %s", a->filename);
+            return -1;
+        }
     }
+
     if (outStart)
         *outStart = 0;
     if (outLength)
         *outLength = (off_t)a->fileSize;
-    return fd;
+
+    l_debug("AAsset_openFileDescriptor(%p, len=%u): fd %d", asset, (unsigned int)a->fileSize, a->fd);
+    return a->fd;
 }
 
-AAssetDir* AAssetManager_openDir(AAssetManager* mgr, const char* dirName) {    l_error("AAssetManager_openDir: %s", dirName);
+AAssetDir* AAssetManager_openDir(AAssetManager* mgr, const char* dirName) {
+    l_error("AAssetManager_openDir: %s", dirName ? dirName : "(null)");
     return (AAssetDir *)strdup("dummy");
 }
 
 void AAssetDir_close(AAssetDir* assetDir) {
     l_error("AAssetDir_close");
-    free(assetDir);
+    if (assetDir) free(assetDir);
 }

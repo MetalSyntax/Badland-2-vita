@@ -18,6 +18,7 @@
 #include <string.h>
 #include <psp2/kernel/sysmem.h>
 #include <psp2/io/stat.h>
+#include <psp2/io/fcntl.h>
 
 // Helpers for our handling of shaders
 GLboolean skip_next_compile = GL_FALSE;
@@ -34,9 +35,16 @@ void gl_preload() {
 #ifdef USE_GLSL_SHADERS
     vglSetSemanticBindingMode(VGL_MODE_POSTPONED);
 #endif
+#ifdef HAVE_SHADER_CACHE
+    vglSetShaderCachePath(DATA_PATH "cache");
+#endif
 }
 
 void gl_init() {
+    static GLboolean initialized = GL_FALSE;
+    if (initialized)
+        return;
+    initialized = GL_TRUE;
     vglInitExtended(0, 960, 544, 16 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
 }
 
@@ -98,43 +106,32 @@ void glCompileShader_soloader(GLuint shader) {
 #ifndef USE_GXP_SHADERS
     if (!skip_next_compile) {
         glCompileShader(shader);
-#ifdef DUMP_COMPILED_SHADERS
-        void *bin = vglMalloc(32 * 1024);
-        GLsizei len;
-        vglGetShaderBinary(shader, 32 * 1024, &len, bin);
-        file_save(next_shader_fname, bin, len);
-        vglFree(bin);
+#if defined(DUMP_COMPILED_SHADERS) && !defined(USE_GLSL_SHADERS)
+        GLint ok = GL_FALSE;
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+        if (ok && next_shader_fname[0]) {
+            void *bin = vglMalloc(32 * 1024);
+            GLsizei len = 0;
+            vglGetShaderBinary(shader, 32 * 1024, &len, bin);
+            // Write to .tmp + rename: a crash mid-save must not leave a
+            // truncated .gxp that the next boot would feed to glShaderBinary.
+            char tmp[sizeof(next_shader_fname) + 4];
+            snprintf(tmp, sizeof(tmp), "%s.tmp", next_shader_fname);
+            file_mkpath(next_shader_fname, 0777);
+            if (len > 0 && file_save(tmp, bin, len)) {
+                sceIoRemove(next_shader_fname);
+                sceIoRename(tmp, next_shader_fname);
+            }
+            vglFree(bin);
+        }
+        next_shader_fname[0] = '\0';
 #endif
     }
     skip_next_compile = GL_FALSE;
 #endif
 }
 
-#if defined(USE_GLSL_SHADERS) && defined(DUMP_COMPILED_SHADERS)
-void load_shader(GLuint shader, const char * string, size_t length) {
-    char* sha_name = str_sha1sum(string, length);
-
-    char gxp_path[256];
-    snprintf(gxp_path, sizeof(gxp_path), DATA_PATH"gxp/%s.gxp", sha_name);
-
-    if (file_exists(gxp_path)) {
-        uint8_t *buffer;
-        size_t size;
-
-        file_load(gxp_path, &buffer, &size);
-
-        glShaderBinary(1, &shader, 0, buffer, (int32_t) size);
-
-        free(buffer);
-        skip_next_compile = GL_TRUE;
-    } else {
-        glShaderSource(shader, 1, &string, &length);
-        strcpy(next_shader_fname, gxp_path);
-    }
-
-    free(sha_name);
-}
-#elif defined(USE_GLSL_SHADERS)
+#if defined(USE_GLSL_SHADERS)
 void load_shader(GLuint shader, const char * string, size_t length) {
     glShaderSource(shader, 1, &string, &length);
 }

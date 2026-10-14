@@ -21,6 +21,26 @@ set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
 set(PSVITAIP "192.168.3.15" CACHE STRING "PSVita IP (for FTP access)")
 set(PARSECOREPATH "$ENV{PARSECOREPATH}" CACHE STRING "vita-parse-core main.py")
 
+## vitaGL vendored in vendor/vitaGL (from Rayman / Prince of Persia: SOFTFP_ABI=1)
+## SOFTFP_ABI=1 is mandatory: the loader is built with -mfloat-abi=softfp.
+## HAVE_SHADER_CACHE=1: caches compiled GXP programs safely with semantic attribute bindings in glLinkProgram.
+set(VITAGL_VENDOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/vitaGL)
+set(VITAGL_MAKE_FLAGS_STR "SOFTFP_ABI=1 NO_DEBUG=1 NO_SPLASHSCREEN=1 HAVE_SHADER_CACHE=1" CACHE STRING "vitaGL make flags")
+separate_arguments(VITAGL_MAKE_FLAGS UNIX_COMMAND "${VITAGL_MAKE_FLAGS_STR}")
+include(ExternalProject)
+ExternalProject_Add(
+  vitaGL_vendored
+  SOURCE_DIR ${VITAGL_VENDOR_DIR}
+  BUILD_IN_SOURCE 1
+  CONFIGURE_COMMAND sh ${VITAGL_VENDOR_DIR}/build_vitagl.sh "${VITAGL_MAKE_FLAGS_STR}" ${VITAGL_VENDOR_DIR}/vitagl_flags ${VITAGL_VENDOR_DIR}
+  BUILD_COMMAND make -j8 ${VITAGL_MAKE_FLAGS}
+  INSTALL_COMMAND ""
+  BUILD_BYPRODUCTS ${VITAGL_VENDOR_DIR}/libvitaGL.a
+)
+add_library(vitaGL_vendored_lib STATIC IMPORTED)
+set_target_properties(vitaGL_vendored_lib PROPERTIES IMPORTED_LOCATION ${VITAGL_VENDOR_DIR}/libvitaGL.a)
+add_dependencies(vitaGL_vendored_lib vitaGL_vendored)
+
 # Game-specific definitions
 set(DATA_PATH "ux0:data/badland2/" CACHE STRING "Path to data (with trailing /)")
 set(SO_PATH "${DATA_PATH}main.so" CACHE STRING "Path to .so")
@@ -42,8 +62,9 @@ else()
   message(FATAL_ERROR "SHADER_FORMAT option can only be one of: 'GLSL', 'CG', 'GXP'")
 endif()
 
-set(valid_dump_formats GLSL CG)
-option(DUMP_COMPILED_SHADERS "When using GLSL or CG shader format, cache compiled shaders on disk" ON)
+# For GLSL in VGL_MODE_POSTPONED, vitaGL's native HAVE_SHADER_CACHE=1 handles caching safely at link time.
+set(valid_dump_formats CG)
+option(DUMP_COMPILED_SHADERS "When using CG shader format, cache compiled shaders on disk" OFF)
 if (DUMP_COMPILED_SHADERS)
   if (SHADER_FORMAT IN_LIST valid_dump_formats)
     add_definitions(-DDUMP_COMPILED_SHADERS)
@@ -86,6 +107,7 @@ add_executable(${CMAKE_PROJECT_NAME}
                 source/reimpl/looper.c
                 source/reimpl/native_activity.c
                 source/reimpl/native_window.c
+                source/reimpl/opensles_fix.c
                source/reimpl/asset_manager.cpp
                source/utils/dialog.c
                source/utils/glutil.c
@@ -102,10 +124,11 @@ add_executable(${CMAKE_PROJECT_NAME}
                lib/so_util/so_util.c)
 
 add_subdirectory(lib/libc_bridge)
-add_dependencies(${CMAKE_PROJECT_NAME} SceLibcBridge)
+add_dependencies(${CMAKE_PROJECT_NAME} SceLibcBridge vitaGL_vendored)
 
 target_include_directories(${CMAKE_PROJECT_NAME} SYSTEM
                            PUBLIC ${CMAKE_SOURCE_DIR}/lib
+                           PUBLIC ${VITAGL_VENDOR_DIR}/source
                            )
 
 target_include_directories(${CMAKE_PROJECT_NAME}
@@ -113,9 +136,10 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            )
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
+                      -Wl,--wrap=COutputMix_PreDestroy
                       -Wl,--whole-archive pthread -Wl,--no-whole-archive
                       stdc++
-                      vitaGL
+                      vitaGL_vendored_lib
                       vitashark
                       SceShaccCgExt
                       taihen_stub

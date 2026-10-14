@@ -266,6 +266,10 @@ void _log_print(int t, const char* fmt, ...) {
             if ((unsigned int)len >= sizeof(buffer_c))
                 len = (int)sizeof(buffer_c) - 1;
             sceIoWrite(_log_fd, buffer_c, len);
+            // Commit to disk now: on a crash the process dies without close
+            // and the file kept only its header (log 004).
+            // ponytail: per-line sync is slow; sync only >= WARN if frame-loop logging gets heavy.
+            sceIoSyncByFd(_log_fd, 0);
         }
     }
 

@@ -108,6 +108,11 @@ off_t AAsset_getRemainingLength(AAsset* asset);
 off_t AAsset_getLength(AAsset* asset);
 
 /**
+ * Get a pointer to a buffer containing the asset data.
+ */
+const void* AAsset_getBuffer(AAsset* asset);
+
+/**
  * Open an asset's file descriptor for mmap/read access (android/asset_manager.h).
  * UND import of libbadland2.so; used by android_native_app_glue-adjacent code
  * paths that want a raw fd instead of the streaming AAsset_read API.
