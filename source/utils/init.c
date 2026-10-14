@@ -22,6 +22,8 @@
 #include <psp2/kernel/clib.h>
 #include <psp2/power.h>
 #include <psp2/io/stat.h>
+#include <psp2/ctrl.h>
+#include <psp2/touch.h>
 
 #include <falso_jni/FalsoJNI.h>
 #include <so_util/so_util.h>
@@ -61,7 +63,18 @@ void soloader_init_all() {
         l_success("FIOS initialized.");
 #endif
 
-    // Ensure shader cache directories exist so shader dumping and caching succeeds
+    // Set up Vita input hardware sampling
+    sceCtrlSetSamplingModeExt(SCE_CTRL_MODE_ANALOG_WIDE);
+    sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START);
+    sceTouchSetSamplingState(SCE_TOUCH_PORT_BACK, SCE_TOUCH_SAMPLING_STATE_STOP);
+
+    // Ensure runtime directories exist
+    sceIoMkdir(DATA_PATH "logs", 0777);
+    sceIoMkdir(DATA_PATH "saves", 0777);
+    sceIoMkdir(DATA_PATH "cache", 0777);
+    sceIoMkdir(DATA_PATH "cache/v4", 0777);
+    sceIoMkdir(DATA_PATH "cache/v4/v", 0777);
+    sceIoMkdir(DATA_PATH "cache/v4/f", 0777);
     sceIoMkdir(DATA_PATH "gxp", 0777);
     sceIoMkdir(DATA_PATH "cg", 0777);
     sceIoMkdir(DATA_PATH "glsl", 0777);
