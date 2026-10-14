@@ -40,10 +40,8 @@ static volatile int g_input_queue_inited = 0;
 static int s_slot_id[TOUCH_SLOTS] = { -1, -1, -1, -1, -1 }; // Vita report id per game pointer id
 static float s_slot_x[TOUCH_SLOTS], s_slot_y[TOUCH_SLOTS];
 static uint32_t s_prev_buttons = 0;
-// Negative slot owners for the simulated flap fingers (Vita report ids are >= 0)
-#define VIRT_LEFT_ID  -2
-#define VIRT_RIGHT_ID -3
-#define FLAP_Y 500.0f // near the bottom edge, away from centred menu buttons
+#define STICK_DEADZONE 0.25f
+static float s_prev_ax = 0.0f, s_prev_ay = 0.0f;
 
 static const struct {
     uint32_t mask;
@@ -52,12 +50,7 @@ static const struct {
     { SCE_CTRL_CROSS,    AKEYCODE_BUTTON_A },
     { SCE_CTRL_SQUARE,   AKEYCODE_BUTTON_X },
     { SCE_CTRL_TRIANGLE, AKEYCODE_BUTTON_Y },
-    { SCE_CTRL_UP,       AKEYCODE_DPAD_UP },
-    { SCE_CTRL_DOWN,     AKEYCODE_DPAD_DOWN },
-    { SCE_CTRL_LEFT,     AKEYCODE_DPAD_LEFT },
-    { SCE_CTRL_RIGHT,    AKEYCODE_DPAD_RIGHT },
-    { SCE_CTRL_LTRIGGER, AKEYCODE_BUTTON_L1 },
-    { SCE_CTRL_RTRIGGER, AKEYCODE_BUTTON_R1 },
+    // D-pad and L/R are not keys: they drive the analog stick axes below.
     // Badland 2 only opens the pause menu on BUTTON_B (NvGamepad bit 0x2000);
     // BUTTON_START (bit 0x10) reaches the game but nothing reacts to it.
     { SCE_CTRL_START,    AKEYCODE_BUTTON_B },
@@ -100,19 +93,9 @@ static void push_touch(AInputQueue *q, int32_t action, int id, float x, float y)
     queue_push_locked(q, &ev);
 }
 
-static void sim_flap(AInputQueue *q, int owner, int down, float x) {
-    int s = 0;
-    while (s < TOUCH_SLOTS && s_slot_id[s] != owner) s++;
-    if (down && s == TOUCH_SLOTS) {
-        s = 0;
-        while (s < TOUCH_SLOTS && s_slot_id[s] != -1) s++;
-        if (s == TOUCH_SLOTS) return;
-        s_slot_id[s] = owner;
-        push_touch(q, AMOTION_EVENT_ACTION_DOWN, s, x, FLAP_Y);
-    } else if (!down && s < TOUCH_SLOTS) {
-        s_slot_id[s] = -1;
-        push_touch(q, AMOTION_EVENT_ACTION_UP, s, x, FLAP_Y);
-    }
+static float stick_axis(uint8_t v) {
+    float a = ((float)v - 128.0f) / 128.0f;
+    return (a > -STICK_DEADZONE && a < STICK_DEADZONE) ? 0.0f : a;
 }
 
 AInputQueue *input_queue_create(void) {
@@ -135,8 +118,37 @@ static void input_queue_poll(AInputQueue *q) {
     sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1);
     sceCtrlPeekBufferPositive(0, &pad, 1);
 
-    // 1. Physical Gamepad Buttons -> AKeyEvent
     uint32_t cur_buttons = pad.buttons;
+
+    // 1. Flaps -> analog joystick (AXIS_X / AXIS_Y). b::Controller turns stick
+    // deflection into PlayerManager::onTouchStart strength; d-pad/L1/R1/A key
+    // events reach it with strength 0.0, so the creature barely moves.
+    // Pushed before the keys so CROSS's zero-strength A press loses to it.
+    float ax = stick_axis(pad.lx), ay = stick_axis(pad.ly);
+    if (cur_buttons & (SCE_CTRL_LTRIGGER | SCE_CTRL_LEFT)) ax = -1.0f;
+    if (cur_buttons & (SCE_CTRL_RTRIGGER | SCE_CTRL_RIGHT)) ax = 1.0f;
+    if (cur_buttons & SCE_CTRL_DOWN) ay = 1.0f;
+    int both = (cur_buttons & (SCE_CTRL_CROSS | SCE_CTRL_UP)) ||
+               ((cur_buttons & (SCE_CTRL_LTRIGGER | SCE_CTRL_LEFT)) &&
+                (cur_buttons & (SCE_CTRL_RTRIGGER | SCE_CTRL_RIGHT)));
+    if (both) {
+        ax = 0.0f;
+        ay = -1.0f; // stick up = both flaps
+    }
+    if (ax != s_prev_ax || ay != s_prev_ay) {
+        AInputEvent ev;
+        sceClibMemset(&ev, 0, sizeof(ev));
+        ev.type = AINPUT_EVENT_TYPE_MOTION;
+        ev.source = AINPUT_SOURCE_JOYSTICK;
+        ev.action = AMOTION_EVENT_ACTION_MOVE;
+        ev.axes[0] = ax; // AMOTION_EVENT_AXIS_X
+        ev.axes[1] = ay; // AMOTION_EVENT_AXIS_Y
+        queue_push_locked(q, &ev);
+        s_prev_ax = ax;
+        s_prev_ay = ay;
+    }
+
+    // 2. Physical Gamepad Buttons -> AKeyEvent
     for (size_t i = 0; i < NUM_BUTTONS; i++) {
         uint32_t mask = s_btn_map[i].mask;
         int32_t key = s_btn_map[i].key;
@@ -214,17 +226,6 @@ static void input_queue_poll(AInputQueue *q) {
     }
     if (moved)
         queue_push_locked(q, &move);
-
-    // 3. Virtual flaps: d-pad/L/R/stick hold a simulated finger on each screen
-    // half (CROSS/UP = both), sharing the real-finger slots so ids stay in 0..4.
-    int virt_left = (cur_buttons & (SCE_CTRL_LTRIGGER | SCE_CTRL_LEFT)) || (pad.lx < 80);
-    int virt_right = (cur_buttons & (SCE_CTRL_RTRIGGER | SCE_CTRL_RIGHT)) || (pad.lx > 175);
-    if (cur_buttons & (SCE_CTRL_CROSS | SCE_CTRL_UP)) {
-        virt_left = 1;
-        virt_right = 1;
-    }
-    sim_flap(q, VIRT_LEFT_ID, virt_left, 240.0f);
-    sim_flap(q, VIRT_RIGHT_ID, virt_right, 720.0f);
 }
 
 int input_queue_has_events(void *queue) {

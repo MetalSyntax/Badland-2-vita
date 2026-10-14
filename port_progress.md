@@ -328,6 +328,8 @@
 
 - **Touch no responde (log 018):** el handler de input del juego (`.so` 0x13fac0) guarda dedos en una tabla de 5 entradas indexada por pointer id e ignora ids > 4; `input_queue.c` pasaba `SceTouchReport.id` (contador creciente de la Vita). Fix: asignar cada dedo a un slot libre 0..4, DOWN/UP por dedo, MOVE solo si hubo movimiento. Botones: START → `BUTTON_B` (pausa, bit NvGamepad 0x2000); CIRCLE sin mapear (pedido del usuario).
 
+- **Flaps físicos débiles (log 020):** `b::Controller::onPressStart` (0x22d798) llama `PlayerManager::onTouchStart(..., fuerza=|valor|)`. Los botones (`gp::Gamepad::gamepadButtonChanged`, 0x1407dc) llegan con valor 0.0 → aleteo sin fuerza; solo el stick (`checkGamepadAnalog`, 0x14058c; ejes AXIS_X/AXIS_Y vía eventos MOTION con source JOYSTICK 0x01000010) pasa magnitud. Fix: d-pad/L/R/stick/CROSS → eventos de joystick (izq x=-1, der x=+1, ambos y=-1), sin keys DPAD/L1/R1 ni toques simulados. Sin probar en consola.
+
 ## Cómo seguir (una cosa a la vez)
 1. Desplegar el nuevo binario a la consola mediante `psvita-toolkit deploy --eboot`.
 2. Lanzar Badland 2 y verificar que:
