@@ -79,11 +79,11 @@ static jint Main_JNI_IsNetConnected(jmethodID id, va_list args) {
 }
 
 static jint Main_JNI_isControllerOnly(jmethodID id, va_list args) {
-    // Main.java returns 1 when the device has NO touchscreen. Touch input is
-    // not wired yet (Phase 6), so 1 is the truthful answer today.
+    // PS Vita has a front touchscreen (and physical controls). Returning 0 enables
+    // both touch and gamepad modes in Badland 2.
     (void)id;
     (void)args;
-    return 1;
+    return 0;
 }
 
 static jint Main_JNI_openUrl(jmethodID id, va_list args) {
@@ -114,6 +114,104 @@ static void Main_JNI_keyboardHide(jmethodID id, va_list args) {
     l_debug("Main.JNI_keyboardHide: ignored (no soft keyboard).");
 }
 
+static jobject LoginHandler_JNI_getAndroidID(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    return jni->NewStringUTF(&jni, "ad_psvita_user_id");
+}
+
+static jint FacebookManager_JNI_isLoggedIn(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    return 0; // Not logged in
+}
+
+static void FacebookManager_JNI_startupLogin(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    l_debug("FacebookManager.JNI_startupLogin: ignored.");
+}
+
+static jint FacebookManager_JNI_getLoginState(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    return 0; // Disconnected / Not logged in
+}
+
+static jobject FacebookManager_JNI_getUserId(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    return jni->NewStringUTF(&jni, "");
+}
+
+static jobject FacebookManager_JNI_getUserTokenString(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    return jni->NewStringUTF(&jni, "");
+}
+
+static jobject FacebookManager_JNI_getUserName(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    return jni->NewStringUTF(&jni, "");
+}
+
+static jobject FacebookManager_JNI_getUserFirstName(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    return jni->NewStringUTF(&jni, "");
+}
+
+static jobject FacebookManager_JNI_getUserSurname(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    return jni->NewStringUTF(&jni, "");
+}
+
+static void FacebookManager_JNI_loginWithFacebook(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    l_debug("FacebookManager.JNI_loginWithFacebook: ignored.");
+}
+
+static void FacebookManager_JNI_logoutWithFacebook(jmethodID id, va_list args) {
+    (void)id;
+    (void)args;
+    l_debug("FacebookManager.JNI_logoutWithFacebook: ignored.");
+}
+
+// --- org.fmod.FMOD statics (libfmod picks its output device with these) ---
+
+static jboolean FMOD_checkInit(jmethodID id, va_list args) {
+    // Java: gContext != null. Always true on a real device after FMOD.init().
+    (void)id;
+    (void)args;
+    return JNI_TRUE;
+}
+
+static jboolean FMOD_supportsLowLatency(jmethodID id, va_list args) {
+    // checkInit && supportsLowLatency -> FMOD_OUTPUTTYPE_OPENSL (16), which is
+    // backed by the SDK's libOpenSLES. Otherwise FMOD picks AudioTrack (15),
+    // i.e. Java org.fmod.AudioDevice, which doesn't exist here.
+    (void)id;
+    (void)args;
+    return JNI_TRUE;
+}
+
+static jint FMOD_getOutputSampleRate(jmethodID id, va_list args) {
+    // PS Vita native audio rate is 44100 Hz (backed by VitaSDK libOpenSLES Vita.o).
+    (void)id;
+    (void)args;
+    return 44100;
+}
+
+static jint FMOD_getOutputBlockSize(jmethodID id, va_list args) {
+    // 512 frames per buffer: low latency and matches OpenSLES buffer configuration.
+    (void)id;
+    (void)args;
+    return 512;
+}
+
 NameToMethodID nameToMethodId[] = {
     { 1000, "JNI_textAsBitmap", METHOD_TYPE_OBJECT },
     { 1001, "JNI_getLocalLanguage", METHOD_TYPE_INT },
@@ -123,9 +221,27 @@ NameToMethodID nameToMethodId[] = {
     { 1005, "JNI_getModelName", METHOD_TYPE_OBJECT },
     { 1006, "JNI_keyboardShow", METHOD_TYPE_VOID },
     { 1007, "JNI_keyboardHide", METHOD_TYPE_VOID },
+    { 1008, "JNI_getAndroidID", METHOD_TYPE_OBJECT },
+    { 1009, "JNI_isLoggedIn", METHOD_TYPE_INT },
+    { 1010, "JNI_startupLogin", METHOD_TYPE_VOID },
+    { 1011, "checkInit", METHOD_TYPE_BOOLEAN },
+    { 1012, "supportsLowLatency", METHOD_TYPE_BOOLEAN },
+    { 1013, "getOutputSampleRate", METHOD_TYPE_INT },
+    { 1014, "getOutputBlockSize", METHOD_TYPE_INT },
+    { 1015, "JNI_getUserId", METHOD_TYPE_OBJECT },
+    { 1016, "JNI_getUserTokenString", METHOD_TYPE_OBJECT },
+    { 1017, "JNI_getUserName", METHOD_TYPE_OBJECT },
+    { 1018, "JNI_getUserFirstName", METHOD_TYPE_OBJECT },
+    { 1019, "JNI_getUserSurname", METHOD_TYPE_OBJECT },
+    { 1020, "JNI_getLoginState", METHOD_TYPE_INT },
+    { 1021, "JNI_loginWithFacebook", METHOD_TYPE_VOID },
+    { 1022, "JNI_logoutWithFacebook", METHOD_TYPE_VOID },
 };
 
-MethodsBoolean methodsBoolean[] = {};
+MethodsBoolean methodsBoolean[] = {
+    { 1011, FMOD_checkInit },
+    { 1012, FMOD_supportsLowLatency },
+};
 MethodsByte methodsByte[] = {};
 MethodsChar methodsChar[] = {};
 MethodsDouble methodsDouble[] = {};
@@ -135,16 +251,29 @@ MethodsInt methodsInt[] = {
     { 1002, Main_JNI_IsNetConnected },
     { 1003, Main_JNI_isControllerOnly },
     { 1004, Main_JNI_openUrl },
+    { 1009, FacebookManager_JNI_isLoggedIn },
+    { 1013, FMOD_getOutputSampleRate },
+    { 1014, FMOD_getOutputBlockSize },
+    { 1020, FacebookManager_JNI_getLoginState },
 };
 MethodsLong methodsLong[] = {};
 MethodsObject methodsObject[] = {
     { 1000, Main_JNI_textAsBitmap },
     { 1005, Main_JNI_getModelName },
+    { 1008, LoginHandler_JNI_getAndroidID },
+    { 1015, FacebookManager_JNI_getUserId },
+    { 1016, FacebookManager_JNI_getUserTokenString },
+    { 1017, FacebookManager_JNI_getUserName },
+    { 1018, FacebookManager_JNI_getUserFirstName },
+    { 1019, FacebookManager_JNI_getUserSurname },
 };
 MethodsShort methodsShort[] = {};
 MethodsVoid methodsVoid[] = {
     { 1006, Main_JNI_keyboardShow },
     { 1007, Main_JNI_keyboardHide },
+    { 1010, FacebookManager_JNI_startupLogin },
+    { 1021, FacebookManager_JNI_loginWithFacebook },
+    { 1022, FacebookManager_JNI_logoutWithFacebook },
 };
 
 /*
