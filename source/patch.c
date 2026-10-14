@@ -71,5 +71,11 @@ void so_patch(void) {
         hook_addr(lvlBonus_reqFb_sym, (uintptr_t)&noop_func);
     }
 
+    // Disable debugBank logging: prevents dereferencing NULL bank handles if a bank load ever fails
+    uintptr_t debugBank_sym = so_symbol(&so_mod, "_ZN1b11AudioEngine9debugBankEPN4FMOD6Studio4BankE");
+    if (debugBank_sym) {
+        hook_addr(debugBank_sym, (uintptr_t)&noop_func);
+    }
+
     l_info("Patches applied successfully.");
 }

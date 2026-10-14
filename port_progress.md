@@ -290,15 +290,16 @@
        - Creado `RELEASE.md` detallando las novedades de la v1.0, controles y guía de instalación.
   - **Build verificado:** `psvita-toolkit build` ejecutado exitosamente generando el VPK y `eboot.bin` actualizados.
 
-- **2026-10-14 — Solución de audio (FMOD AudioTrack + SceLibcBridge fseeko):**
-  - **Diagnóstico del problema:**
+- **2026-10-14 — Solución de audio y triage de crash en debugBank (FMOD AudioTrack + SceLibcBridge fseeko + patch noop):**
+  - **Diagnóstico del problema (badland2_014.log + dump badland2-psp2core-1792004289):**
     1. En `badland2_014.log`, `b::AudioEngine::init()` fallaba con:
        `FMOD error 51 - Error initializing output device.`
        Seguido de:
        `FMOD error 30 - An invalid object handle was used. Cannot load audio bank /MasterBank.bank`
     2. El crash o fallo de salida se debía a que `libfmod.so` seleccionaba `FMOD_OUTPUTTYPE_OPENSL` (16) al recibir valores positivos de `getOutputSampleRate` y `getOutputBlockSize`. La implementación de OpenSL ES en VitaSDK falla en `CreateAudioPlayer` con `SL_RESULT_CONTENT_UNSUPPORTED`.
     3. El fallo al cargar bancos (error 30) se debía a que en `source/dynlib.c`, `fseeko` y `ftello` invocaban directamente las funciones de `newlib` en vez de `sceLibcBridge_fseek` y `sceLibcBridge_ftell`. Bajo `USE_SCELIBC_IO`, `fopen` devuelve un `SceLibc FILE*`, incompatible con newlib.
-  - **Solución implementada (arquitectura Rayman Jungle Run):**
+    4. El crash analizado en el dump `badland2-psp2core-1792004289-0x000a56208b-eboot.bin.psp2dmp` (PC `0x985adb34`) ocurrió en `b::AudioEngine::debugBank(FMOD::Studio::Bank *bank)`. Como `/MasterBank.bank` devolvió `NULL`, `debugBank` recibió `bank = NULL` (`r0 = 0x0`) e intentó invocar la vtable `bank->getEventList(...)` desreferenciando la dirección cero (Data Abort).
+  - **Solución implementada:**
     1. `source/dynlib.c`:
        - Se implementó `dlopen_soloader` para rechazar explícitamente `"libOpenSLES.so"` (retorna `NULL`), forzando a FMOD a usar la salida estándar `AudioTrack`.
        - Se envolvieron `fseeko` y `ftello` dentro del bloque `#ifdef USE_SCELIBC_IO`, enrutándolos a `sceLibcBridge_fseek` y `sceLibcBridge_ftell`.
@@ -310,6 +311,8 @@
          - `AudioDevice_write`: Recibe el buffer PCM generado por el hilo de mezcla de FMOD, lo acumula en el FIFO y lo envía a la tarjeta de sonido de PS Vita mediante `sceAudioOutOutput()`.
          - `AudioDevice_close`: Libera el puerto de audio y desaloja la memoria del buffer.
        - Se registraron los métodos en `nameToMethodId`, `methodsObject`, `methodsBoolean` y `methodsVoid`.
+    3. `source/patch.c`:
+       - Se hookeó `b::AudioEngine::debugBank(FMOD::Studio::Bank*)` (`_ZN1b11AudioEngine9debugBankEPN4FMOD6Studio4BankE`) a `noop_func`. `debugBank` es una función puramente cosmética que imprime eventos de FMOD en logcat y no afecta el gameplay ni el audio; anularla previene permanentemente cualquier desreferencia a `NULL` si algún banco no existe o falla en cargar.
   - **Build verificado:** `psvita-toolkit build` ejecutado exitosamente con código 0, generando `eboot.bin` y `badland2.vpk`.
 
 ## Cómo seguir (una cosa a la vez)
@@ -317,6 +320,7 @@
 2. Lanzar Badland 2 y verificar que:
    - FMOD inicializa correctamente con `AudioDevice.init` abriendo el puerto `SceAudioOut`.
    - Los bancos `/MasterBank.bank` y `/MasterBank.strings.bank` cargan sin error 30 ni 51.
+   - `debugBank` no desreferencia punteros nulos.
    - La música y efectos sonoros se escuchan con total claridad a 44.1 kHz durante la partida.
    - El menú de pausa y la navegación táctil y física siguen operando sin crasheos.
 3. Continuar disfrutando de la campaña de Badland 2 a 60 FPS en PS Vita con audio completo.
