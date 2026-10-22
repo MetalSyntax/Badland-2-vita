@@ -66,8 +66,11 @@ int main() {
     // (psp2dmp 004: libfmod+0xcadfc). libfmodstudio has no JNI_OnLoad.
     if (so_mod_fmod.text_base) {
         int (* fmod_JNI_OnLoad)(void *jvm) = (void *)so_symbol(&so_mod_fmod, "JNI_OnLoad");
-        if (fmod_JNI_OnLoad)
-            l_debug("libfmod JNI_OnLoad returned 0x%x.", fmod_JNI_OnLoad(&jvm));
+        if (fmod_JNI_OnLoad) {
+            // Call outside l_debug: the macro compiles to nothing in Release.
+            int ver = fmod_JNI_OnLoad(&jvm);
+            l_debug("libfmod JNI_OnLoad returned 0x%x.", ver);
+        }
         else
             l_error("libfmod JNI_OnLoad not found.");
     }

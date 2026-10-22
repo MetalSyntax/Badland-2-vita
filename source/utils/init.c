@@ -118,16 +118,21 @@ void soloader_init_all() {
     }
 
     // 3. Load main game binary (libbadland2.so)
-    if (!file_exists(SO_PATH)) {
+    // v1.0 looked for main.so; keep accepting it for users who renamed the file.
+    const char *so_path = SO_PATH;
+    if (!file_exists(so_path) && file_exists(DATA_PATH "main.so"))
+        so_path = DATA_PATH "main.so";
+
+    if (!file_exists(so_path)) {
         fatal_error("Looks like you haven't installed the data files for this "
                     "port, or they are in an incorrect location. Please make "
                     "sure that you have %s file exactly at that path.", SO_PATH);
     }
 
-    l_info("Loading %s at 0x%08x...", SO_PATH, LOAD_ADDRESS_GAME);
-    if (so_file_load(&so_mod, SO_PATH, LOAD_ADDRESS_GAME) < 0) {
+    l_info("Loading %s at 0x%08x...", so_path, LOAD_ADDRESS_GAME);
+    if (so_file_load(&so_mod, so_path, LOAD_ADDRESS_GAME) < 0) {
         l_fatal("SO could not be loaded.");
-        fatal_error("Error: could not load %s.", SO_PATH);
+        fatal_error("Error: could not load %s.", so_path);
     }
 
     settings_load();

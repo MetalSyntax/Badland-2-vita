@@ -330,6 +330,11 @@
 
 - **Flaps físicos débiles (log 020):** `b::Controller::onPressStart` (0x22d798) llama `PlayerManager::onTouchStart(..., fuerza=|valor|)`. Los botones (`gp::Gamepad::gamepadButtonChanged`, 0x1407dc) llegan con valor 0.0 → aleteo sin fuerza; solo el stick (`checkGamepadAnalog`, 0x14058c; ejes AXIS_X/AXIS_Y vía eventos MOTION con source JOYSTICK 0x01000010) pasa magnitud. Fix: d-pad/L/R/stick/CROSS → eventos de joystick (izq x=-1, der x=+1, ambos y=-1), sin keys DPAD/L1/R1 ni toques simulados. Sin probar en consola.
 
+- **2026-10-21 — v1.1: nombre del .so principal + crash solo en Release (`badland2_021.log` + `psp2core-1792639440-0x00055537e9`):**
+  - **Reporte de usuario:** el juego no arranca hasta renombrar `libbadland2.so` a `main.so`. Confirmado: `CMakeLists.txt` tenía `SO_PATH=${DATA_PATH}main.so` (default del boilerplate) y README/RELEASE pedían `libbadland2.so`. La consola de desarrollo tenía `main.so`, por eso nunca saltó.
+  - **Fix:** `SO_PATH` → `libbadland2.so`; `init.c` acepta `main.so` como fallback (usuarios de v1.0). Ojo: `SO_PATH` es `CACHE STRING`, hay que compilar con `--clean` o `-DSO_PATH=...`.
+  - **Crash al probar en Release:** log solo cabecera, PC `0x980cadfc` = libfmod+0xcadfc (`vm == NULL`, igual que el 004). `main.c` llamaba `fmod_JNI_OnLoad(&jvm)` *dentro* de `l_debug(...)`, que en Release es vacío → nunca se llamaba. Fix: llamada fuera del macro. Confirmado en consola: arranca sin dump.
+
 ## Cómo seguir (una cosa a la vez)
 1. Desplegar el nuevo binario a la consola mediante `psvita-toolkit deploy --eboot`.
 2. Lanzar Badland 2 y verificar que:

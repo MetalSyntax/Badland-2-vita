@@ -69,6 +69,7 @@ Make sure your PS Vita is running Henkaku / Enso on firmware 3.60 or 3.65 and ha
    ├── libfmodstudio.so
    └── (assets extracted from the APK: audio/, config/, level/, scene/, textures/, etc.)
    ```
+   > Keep the original filename `libbadland2.so`. v1.0 only found the game if it was renamed to `main.so`; since v1.1 both names work.
 7. Launch **Badland 2** from your LiveArea!
 
 ---

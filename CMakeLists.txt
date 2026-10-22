@@ -14,7 +14,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 set(VITA_APP_NAME "Badland 2")
 set(VITA_TITLEID "PSVBL0002")
 set(VITA_VPKNAME "badland2")
-set(VITA_VERSION "01.00")
+set(VITA_VERSION "01.10")
 set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
 
 # Optional: used for "send" and "dump" targets
@@ -43,7 +43,7 @@ add_dependencies(vitaGL_vendored_lib vitaGL_vendored)
 
 # Game-specific definitions
 set(DATA_PATH "ux0:data/badland2/" CACHE STRING "Path to data (with trailing /)")
-set(SO_PATH "${DATA_PATH}main.so" CACHE STRING "Path to .so")
+set(SO_PATH "${DATA_PATH}libbadland2.so" CACHE STRING "Path to .so")
 add_definitions(-DDATA_PATH="${DATA_PATH}" -DSO_PATH="${SO_PATH}")
 
 option(USE_SCELIBC_IO "Use SceLibcBridge for IO and some other std functions" ON)

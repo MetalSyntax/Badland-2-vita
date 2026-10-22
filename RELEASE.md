@@ -1,11 +1,14 @@
-# Badland 2 — PS Vita Port v1.0
+# Badland 2 — PS Vita Port v1.1
 
-First official playable release of **Badland 2** for the PlayStation Vita and PlayStation TV!
+Bug-fix release of **Badland 2** for the PlayStation Vita and PlayStation TV.
 
 ---
 
 ## Changes since v1.0
 
+- **Game data filename fixed:** v1.0 looked for `ux0:data/badland2/main.so` while the install guide said `libbadland2.so`, so the game would not launch unless the file was renamed. The loader now loads `libbadland2.so` as documented. If you already renamed it to `main.so`, it still works; no action needed.
+- **Release-build launch crash fixed:** the call to libfmod's `JNI_OnLoad` sat inside a debug-log macro that is compiled out in Release builds, so FMOD crashed at startup (`JavaVM == NULL`, libfmod+0xcadfc). The call now always runs.
+- **Flap controls:** flaps are now driven through the analog joystick axes.
 - **Touchscreen fixed:** the game only tracks pointer ids 0–4, but the loader passed the Vita's ever-growing touch report id, so touches were dropped. Fingers are now mapped to free slots 0–4 with per-finger DOWN/UP events (multi-touch works).
 - **Touch input lag fixed:** the input queue re-polled the hardware on every read, so a held finger generated MOVE events forever and the game's input loop never finished. Polling is now capped to once per ~8 ms.
 - **Audio fixed:** `supportsLowLatency()` returned true, making FMOD pick OpenSL ES, which the loader refuses (FMOD error 51). It now returns false, so FMOD uses the AudioTrack → `SceAudioOut` bridge.
@@ -65,6 +68,7 @@ First official playable release of **Badland 2** for the PlayStation Vita and Pl
    ├── scene/
    └── textures/
    ```
+   > Keep the original filename `libbadland2.so`. A file named `main.so` (v1.0 workaround) is also accepted.
 6. Launch **Badland 2** from LiveArea and enjoy!
 
 ---
