@@ -12,10 +12,24 @@
 #include <psp2/kernel/clib.h>
 #include <stdlib.h>
 
+#include <string.h>
+
+static int alog_is_spam(const char *t) {
+    static const char *const spam[] = { "RIGHT", "LEFT", "UP", "DOWN", "BUTTON ", "- end both",
+        "Activating signalsystem", "De-Activating signalsystem", "Load Tex", "ActiveWorld:" };
+    if (!t) return 1;
+    for (unsigned i = 0; i < sizeof(spam) / sizeof(spam[0]); i++)
+        if (!strncmp(t, spam[i], strlen(spam[i]))) return 1;
+    return 0;
+}
+
 #define print_common \
     switch (prio) { \
         case ANDROID_LOG_INFO: \
-            l_info("[ALOG][%s] %s", tag, text); \
+            /* per-touch / per-frame engine spam (~23 lines/s) goes to debug: as INFO in a \
+               file-log Release build those SD writes caused hard FPS drops (log 024). */ \
+            if (alog_is_spam(text)) l_debug("[ALOG][%s] %s", tag, text); \
+            else l_info("[ALOG][%s] %s", tag, text); \
             break; \
         case ANDROID_LOG_WARN: \
             l_warn("[ALOG][%s] %s", tag, text); \

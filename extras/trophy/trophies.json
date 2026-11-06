@@ -1,0 +1,489 @@
+{
+ "comm_id": "BADL00002",
+ "title": "Badland 2",
+ "detail": "Badland 2 PlayStation Vita Port",
+ "icon": "extras/livearea/icon0.png",
+ "banner": "extras/livearea/pic0.png",
+ "_order": "trophy N <-> BL2_ACHIEVEMENTS[N] in source/patch.c; key = internal SocialManager name",
+ "trophies": [
+  {
+   "ttype": "P",
+   "name": "Badland 2",
+   "detail": "Earn every other trophy."
+  },
+  {
+   "ttype": "B",
+   "name": "Starter",
+   "detail": "Survive the Jungle levels.",
+   "key": "starter"
+  },
+  {
+   "ttype": "B",
+   "name": "Polar Express",
+   "detail": "Survive the Freezy levels.",
+   "key": "polar_express"
+  },
+  {
+   "ttype": "B",
+   "name": "Boiled",
+   "detail": "Survive the Heat levels.",
+   "key": "boiled"
+  },
+  {
+   "ttype": "B",
+   "name": "Kubrik",
+   "detail": "Survive the Sci-Fi levels.",
+   "key": "kubrik"
+  },
+  {
+   "ttype": "S",
+   "name": "Quantum",
+   "detail": "Survive the Warp Zone levels.",
+   "key": "quantum"
+  },
+  {
+   "ttype": "S",
+   "name": "Long Way Down",
+   "detail": "Survive the Evolution levels.",
+   "key": "evolution"
+  },
+  {
+   "ttype": "B",
+   "name": "Double Figures",
+   "detail": "Complete 10 missions.",
+   "key": "double_figures"
+  },
+  {
+   "ttype": "B",
+   "name": "Eggtastic",
+   "detail": "Complete 30 missions.",
+   "key": "eggtastic"
+  },
+  {
+   "ttype": "B",
+   "name": "Sixties",
+   "detail": "Complete 60 missions.",
+   "key": "sixties"
+  },
+  {
+   "ttype": "S",
+   "name": "Average IQ",
+   "detail": "Complete 90 missions.",
+   "key": "average_iq"
+  },
+  {
+   "ttype": "S",
+   "name": "Triple Figures",
+   "detail": "Complete 120 missions.",
+   "key": "triple_figures"
+  },
+  {
+   "ttype": "S",
+   "name": "One Fiddy",
+   "detail": "Complete 150 missions.",
+   "key": "one_fiddy"
+  },
+  {
+   "ttype": "G",
+   "name": "U Turn",
+   "detail": "Complete 180 missions.",
+   "key": "u_turn"
+  },
+  {
+   "ttype": "B",
+   "name": "Liberator",
+   "detail": "Save 100 clones.",
+   "key": "liberator"
+  },
+  {
+   "ttype": "B",
+   "name": "Clone Hugger",
+   "detail": "Save 250 clones.",
+   "key": "clone_hugger"
+  },
+  {
+   "ttype": "B",
+   "name": "Magician",
+   "detail": "Save 500 clones.",
+   "key": "magician"
+  },
+  {
+   "ttype": "B",
+   "name": "Millenium",
+   "detail": "Save 1000 clones.",
+   "key": "millenium"
+  },
+  {
+   "ttype": "S",
+   "name": "Black Swarm",
+   "detail": "Save 1250 clones.",
+   "key": "black_swarm"
+  },
+  {
+   "ttype": "S",
+   "name": "Clone Master",
+   "detail": "Save 1500 clones.",
+   "key": "clone_master"
+  },
+  {
+   "ttype": "S",
+   "name": "Savior",
+   "detail": "Save 1750 clones.",
+   "key": "savior"
+  },
+  {
+   "ttype": "S",
+   "name": "Y2K",
+   "detail": "Save 2000 clones.",
+   "key": "y2k"
+  },
+  {
+   "ttype": "S",
+   "name": "Dedicated",
+   "detail": "Save 2500 clones.",
+   "key": "dedicated"
+  },
+  {
+   "ttype": "S",
+   "name": "Legacy",
+   "detail": "Save 3000 clones.",
+   "key": "legacy"
+  },
+  {
+   "ttype": "S",
+   "name": "Oh My Clone",
+   "detail": "Save 3500 clones.",
+   "key": "oh_my_clone"
+  },
+  {
+   "ttype": "G",
+   "name": "Quadratic Cloning",
+   "detail": "Save 4000 clones.",
+   "key": "quadratic"
+  },
+  {
+   "ttype": "B",
+   "name": "Unfortunate Errors",
+   "detail": "Get 500 clones killed in shredders.",
+   "key": "unfortunate_errors"
+  },
+  {
+   "ttype": "B",
+   "name": "Collateral Damage",
+   "detail": "Get 1000 clones killed in shredders.",
+   "key": "collateral_damage"
+  },
+  {
+   "ttype": "S",
+   "name": "Not Even Afraid",
+   "detail": "Get 2000 clones killed in shredders.",
+   "key": "not_afraid"
+  },
+  {
+   "ttype": "B",
+   "name": "Pyro",
+   "detail": "Get 500 clones burned.",
+   "key": "pyro"
+  },
+  {
+   "ttype": "B",
+   "name": "Bonfire",
+   "detail": "Get 1000 clones burned.",
+   "key": "bonfire"
+  },
+  {
+   "ttype": "S",
+   "name": "Sunshine",
+   "detail": "Get 2000 clones burned.",
+   "key": "sunshine"
+  },
+  {
+   "ttype": "B",
+   "name": "Natural Selection",
+   "detail": "Get 500 clones lasered.",
+   "key": "natural_selection"
+  },
+  {
+   "ttype": "B",
+   "name": "Private Road",
+   "detail": "Get 1000 clones lasered.",
+   "key": "private_road"
+  },
+  {
+   "ttype": "S",
+   "name": "Big Red Eye",
+   "detail": "Get 2000 clones lasered.",
+   "key": "big_red_eye"
+  },
+  {
+   "ttype": "B",
+   "name": "Cooling",
+   "detail": "Get 500 clones frozen.",
+   "key": "cooling"
+  },
+  {
+   "ttype": "B",
+   "name": "Snowball",
+   "detail": "Get 1000 clones frozen.",
+   "key": "snowball"
+  },
+  {
+   "ttype": "S",
+   "name": "Winter Is Coming",
+   "detail": "Get 2000 clones frozen.",
+   "key": "winter_is"
+  },
+  {
+   "ttype": "B",
+   "name": "Where Is Your Brother?",
+   "detail": "Get 500 clones squashed.",
+   "key": "where_is"
+  },
+  {
+   "ttype": "B",
+   "name": "Recycling",
+   "detail": "Get 1000 clones squashed.",
+   "key": "recycling"
+  },
+  {
+   "ttype": "S",
+   "name": "Porridge",
+   "detail": "Get 2000 clones squashed.",
+   "key": "porridge"
+  },
+  {
+   "ttype": "B",
+   "name": "Globetrotter",
+   "detail": "Roll 10 km.",
+   "key": "globetrotter"
+  },
+  {
+   "ttype": "B",
+   "name": "Dizzy",
+   "detail": "Roll 20 km.",
+   "key": "dizzy"
+  },
+  {
+   "ttype": "S",
+   "name": "Race Driver",
+   "detail": "Roll 50 km.",
+   "key": "race_driver"
+  },
+  {
+   "ttype": "G",
+   "name": "On The Road Again",
+   "detail": "Roll 100 km.",
+   "key": "on_the_road"
+  },
+  {
+   "ttype": "B",
+   "name": "60 Minutes",
+   "detail": "Play for 1 hour.",
+   "key": "60_minutes"
+  },
+  {
+   "ttype": "B",
+   "name": "True Gamer",
+   "detail": "Play for 10 hours.",
+   "key": "true_gamer"
+  },
+  {
+   "ttype": "S",
+   "name": "Time To Go Outside?",
+   "detail": "Play for 20 hours.",
+   "key": "time_to_go_outside"
+  },
+  {
+   "ttype": "S",
+   "name": "Seriously Addicted",
+   "detail": "Play for 50 hours.",
+   "key": "seriously_addicted"
+  },
+  {
+   "ttype": "G",
+   "name": "I Can Stop Whenever I Want",
+   "detail": "Play for 100 hours.",
+   "key": "stop_whenever"
+  },
+  {
+   "ttype": "B",
+   "name": "Semipro",
+   "detail": "Survive 10 levels in one try.",
+   "key": "semipro"
+  },
+  {
+   "ttype": "B",
+   "name": "Thumb Surgeon",
+   "detail": "Survive 20 levels in one try.",
+   "key": "thumb_surgeon"
+  },
+  {
+   "ttype": "B",
+   "name": "Perfectionistish",
+   "detail": "Survive 30 levels in one try.",
+   "key": "perfectionistish"
+  },
+  {
+   "ttype": "S",
+   "name": "Professional",
+   "detail": "Survive 40 levels in one try.",
+   "key": "professional"
+  },
+  {
+   "ttype": "S",
+   "name": "Annoyingly Good",
+   "detail": "Survive 50 levels in one try.",
+   "key": "annoyingly_good"
+  },
+  {
+   "ttype": "S",
+   "name": "Specialist",
+   "detail": "Survive 60 levels in one try.",
+   "key": "specialist"
+  },
+  {
+   "ttype": "G",
+   "name": "Prodigy",
+   "detail": "Survive 70 levels in one try.",
+   "key": "prodigy"
+  },
+  {
+   "ttype": "B",
+   "name": "Deminer",
+   "detail": "Explode 100 mines.",
+   "key": "deminer"
+  },
+  {
+   "ttype": "S",
+   "name": "Demolitions Expert",
+   "detail": "Explode 1000 mines.",
+   "key": "demo_expert"
+  },
+  {
+   "ttype": "B",
+   "name": "Halloween Party",
+   "detail": "Completed the 3 Halloween missions.",
+   "key": "halloween_party"
+  },
+  {
+   "ttype": "B",
+   "name": "Clonefall Survivor",
+   "detail": "Survive clonefall by tapping only once.",
+   "key": "clonefall_survivor"
+  },
+  {
+   "ttype": "B",
+   "name": "Butterfly",
+   "detail": "Save all the clones in Vertical Limit.",
+   "key": "butterfly"
+  },
+  {
+   "ttype": "B",
+   "name": "Zero Gravity",
+   "detail": "Survive without collecting powerups in Gravity Break.",
+   "key": "zero_gravity"
+  },
+  {
+   "ttype": "B",
+   "name": "Bomberman",
+   "detail": "Explode all mines in Rush.",
+   "key": "bomberman"
+  },
+  {
+   "ttype": "B",
+   "name": "Skateboarder",
+   "detail": "Save 5 clones in Fury.",
+   "key": "skateboarder"
+  },
+  {
+   "ttype": "B",
+   "name": "Surefire",
+   "detail": "Collect all powerups in Supersonic by only tapping the left side of the screen.",
+   "key": "surefire"
+  },
+  {
+   "ttype": "B",
+   "name": "Minimalist",
+   "detail": "Collect less than 8 powerups in Beam Me Up.",
+   "key": "minimalist"
+  },
+  {
+   "ttype": "B",
+   "name": "The Great Escape",
+   "detail": "Save 30 clones in ESC.",
+   "key": "great_escape"
+  },
+  {
+   "ttype": "B",
+   "name": "Twins",
+   "detail": "Save 2 clones in Bumped.",
+   "key": "twins"
+  },
+  {
+   "ttype": "B",
+   "name": "Alone",
+   "detail": "Survive coldskin without cloning in one try.",
+   "key": "alone"
+  },
+  {
+   "ttype": "B",
+   "name": "Clonerush Survivor",
+   "detail": "Survive clonerush by tapping only once.",
+   "key": "clonerush_survivor"
+  },
+  {
+   "ttype": "B",
+   "name": "40 Below Zero Outside",
+   "detail": "Save 100 clones in Frost.",
+   "key": "forty_below"
+  },
+  {
+   "ttype": "B",
+   "name": "Untouchable",
+   "detail": "Survive without collecting powerups in Down.",
+   "key": "untouchable"
+  },
+  {
+   "ttype": "B",
+   "name": "Behind The Tower",
+   "detail": "Collect all powerups in Guardians.",
+   "key": "tower"
+  },
+  {
+   "ttype": "B",
+   "name": "Big Eyes",
+   "detail": "Collect all powerups in Frontiers.",
+   "key": "big_eyes"
+  },
+  {
+   "ttype": "B",
+   "name": "Navigator",
+   "detail": "Save 140 clones in Cube Driver.",
+   "key": "navigator"
+  },
+  {
+   "ttype": "B",
+   "name": "All Together",
+   "detail": "Collect all powerups in Left Behind.",
+   "key": "all_together"
+  },
+  {
+   "ttype": "B",
+   "name": "Five Red Lights",
+   "detail": "Save 10 clones in Wheeldrop.",
+   "key": "five_red_lights"
+  },
+  {
+   "ttype": "B",
+   "name": "Ancient Treasure",
+   "detail": "Wake up the lost guardian in Deminer.",
+   "key": "ancient_treasure"
+  },
+  {
+   "ttype": "B",
+   "name": "Does Clony Dream Of Electric Sheep?",
+   "detail": "Collect all powerups in Intruders.",
+   "key": "electric_sheep"
+  }
+ ]
+}

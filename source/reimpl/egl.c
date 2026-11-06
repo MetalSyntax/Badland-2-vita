@@ -9,6 +9,7 @@
 
 #include "utils/glutil.h"
 #include "utils/logger.h"
+#include "trophies.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -17,6 +18,14 @@ EGLBoolean eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor) {
     l_debug("eglInitialize(0x%x)", (int)dpy);
 
     gl_init();
+
+    // Right after vitaGL is up, on the engine's GL thread and before its first
+    // frame: the NP setup dialog drives vglSwapBuffers itself. Once only.
+    static int trophies_started = 0;
+    if (!trophies_started) {
+        trophies_started = 1;
+        trophies_init();
+    }
 
     if (major) *major = 2;
     if (minor) *minor = 2;

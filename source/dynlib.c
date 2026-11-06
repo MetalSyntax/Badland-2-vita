@@ -41,6 +41,8 @@
 
 #ifdef USE_SCELIBC_IO
 #include <libc_bridge/libc_bridge.h>
+// The bridge has no rewind; newlib's would act on a SceLibc FILE* (save.bin read from EOF -> progress lost).
+static void rewind_scelibc(FILE *f) { sceLibcBridge_fseek(f, 0, SEEK_SET); }
 #endif
 
 #include "reimpl/errno.h"
@@ -514,7 +516,11 @@ so_default_dynlib default_dynlib[] = {
         { "realpath", (uintptr_t)&realpath },
         { "remove", (uintptr_t)&remove },
         { "rename", (uintptr_t)&rename },
-        { "rewind", (uintptr_t)&rewind },
+        #ifdef USE_SCELIBC_IO
+            { "rewind", (uintptr_t)&rewind_scelibc },
+        #else
+            { "rewind", (uintptr_t)&rewind },
+        #endif
         { "rmdir", (uintptr_t)&rmdir },
         { "truncate", (uintptr_t)&truncate },
         { "unlink", (uintptr_t)&unlink },

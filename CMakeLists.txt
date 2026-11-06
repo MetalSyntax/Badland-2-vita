@@ -14,7 +14,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 set(VITA_APP_NAME "Badland 2")
 set(VITA_TITLEID "PSVBL0002")
 set(VITA_VPKNAME "badland2")
-set(VITA_VERSION "01.10")
+set(VITA_VERSION "01.20")
 set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
 
 # Optional: used for "send" and "dump" targets
@@ -91,6 +91,7 @@ add_executable(${CMAKE_PROJECT_NAME}
                source/dynlib.c
                source/java.c
                source/patch.c
+               source/trophies.c
                 source/reimpl/bits/_ctype.c
                 source/reimpl/egl.c
                 source/reimpl/errno.c
@@ -167,6 +168,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       ScePower_stub
                       SceTouch_stub
                       SceVshBridge_stub
+                      SceSysmodule_stub
+                      SceNpTrophy_stub
                       )
 
 vita_create_self(eboot.bin ${CMAKE_PROJECT_NAME} UNSAFE NOASLR)
@@ -180,6 +183,7 @@ vita_create_vpk(${VITA_VPKNAME}.vpk ${VITA_TITLEID} eboot.bin
                 ${CMAKE_SOURCE_DIR}/extras/livearea/startup.png sce_sys/livearea/contents/startup.png
                 ${CMAKE_SOURCE_DIR}/extras/livearea/bg0.png sce_sys/livearea/contents/bg0.png
                 ${CMAKE_SOURCE_DIR}/extras/livearea/template.xml sce_sys/livearea/contents/template.xml
+                ${CMAKE_SOURCE_DIR}/extras/trophy/BADL00002_00/TROPHY.TRP sce_sys/trophy/BADL00002_00/TROPHY.TRP
                 )
 
 add_custom_target(send
